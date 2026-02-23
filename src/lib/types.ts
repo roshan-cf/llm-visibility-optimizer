@@ -390,7 +390,19 @@ export interface SiteAnalysis {
   totalPages: number;
   pages: PageAnalysis[];
   
-  /** Scores */
+  /** NEW: Two-Layer Scores */
+  siteDiscoverabilityScore: number;
+  siteDiscoverabilityBreakdown: SiteDiscoverabilityBreakdown;
+  
+  productExtractabilityScore: number;
+  productExtractabilityBreakdown?: ProductExtractabilityBreakdown;
+  
+  /** NEW: URL type analysis */
+  analyzedUrlType: UrlType;
+  analyzedSingleProduct: boolean;
+  showFullSiteOption: boolean;
+  
+  /** Legacy aggregate score (average of two scores) */
   aggregateScore: number;
   aggregateScoreBreakdown?: AggregateScoreBreakdown;
   
@@ -419,6 +431,9 @@ export interface SiteAnalysis {
     offerPages: number;
     pagesWithSchema: number;
     pagesWithoutSchema: number;
+    pagesWithGTIN: number;
+    pagesWithMPN: number;
+    pagesWithSKU: number;
   };
   
   /** Page type breakdown */
@@ -440,20 +455,37 @@ export interface SiteAnalysis {
   /** Generated artifacts */
   generatedArtifacts?: GeneratedArtifacts;
   
-  /** NEW: Visibility limitations disclaimer */
+  /** Visibility limitations */
   limitations: {
-    trainingDataInclusion: boolean; // Always false - we can't measure
-    domainAuthority: boolean; // Always false - we can't measure
-    brandRecognition: boolean; // Always false - we can't measure
-    citationDensity: boolean; // Always false - we can't measure
-    userBehavior: boolean; // Always false - we can't measure
+    trainingDataInclusion: boolean;
+    domainAuthority: boolean;
+    brandRecognition: boolean;
+    citationDensity: boolean;
+    userBehavior: boolean;
+    externalMentions: boolean;
+    thirdPartyReviews: boolean;
   };
   
-  /** NEW: Comparison context */
+  /** Comparison context */
   comparisonContext: {
-    percentile: number;
-    label: string;
+    siteDiscoverability: {
+      percentile: number;
+      label: string;
+    };
+    productExtractability: {
+      percentile: number;
+      label: string;
+    };
     comparedTo: string;
+  };
+  
+  /** Redirect info */
+  resolvedUrl?: {
+    original: string;
+    final: string;
+    originalDomain: string;
+    finalDomain: string;
+    chain: string[];
   };
 }
 
@@ -494,3 +526,176 @@ export interface GeneratedSchema {
 }
 
 export type AnalysisResult = SiteAnalysis;
+
+// ============================================
+// TWO-LAYER SCORING MODEL
+// ============================================
+
+export type UrlType = "domain" | "product" | "collection";
+
+export interface UrlAnalysis {
+  type: UrlType;
+  domain: string;
+  isProductPage: boolean;
+  isHomepage: boolean;
+  isCollection: boolean;
+}
+
+export interface SiteDiscoverabilityBreakdown {
+  llmsTxt: {
+    points: number;
+    max: number;
+    present: boolean;
+    hasContent: boolean;
+    hasCategories: boolean;
+    hasProducts: boolean;
+    quality: "complete" | "partial" | "missing";
+  };
+  aiCrawlerAccess: {
+    points: number;
+    max: number;
+    allowsOAI: boolean;
+    allowsGPTBot: boolean;
+    allowsChatGPTUser: boolean;
+    hasRobotsTxt: boolean;
+    details: string;
+  };
+  sitemap: {
+    points: number;
+    max: number;
+    present: boolean;
+    productCount: number;
+    urlCount: number;
+  };
+  organizationSchema: {
+    points: number;
+    max: number;
+    present: boolean;
+    hasName: boolean;
+    hasLogo: boolean;
+    hasSameAs: boolean;
+    hasDescription: boolean;
+  };
+  categoryPresence: {
+    points: number;
+    max: number;
+    categories: string[];
+    count: number;
+  };
+  brandConsistency: {
+    points: number;
+    max: number;
+    consistent: boolean;
+    brandVariations: string[];
+    dominantBrand: string | null;
+  };
+  technicalHealth: {
+    points: number;
+    max: number;
+    https: boolean;
+    accessible: boolean;
+    noMajorErrors: boolean;
+  };
+  externalMentions: {
+    measurable: false;
+    importance: "high";
+    weight: string;
+    recommendation: string;
+  };
+  domainAuthority: {
+    measurable: false;
+    importance: "medium";
+    weight: string;
+    recommendation: string;
+  };
+}
+
+export interface SiteDiscoverabilityScore {
+  score: number;
+  max: number;
+  label: string;
+  breakdown: SiteDiscoverabilityBreakdown;
+}
+
+export interface ProductExtractabilityBreakdown {
+  productSchema: {
+    points: number;
+    max: number;
+    present: boolean;
+    hasName: boolean;
+    hasDescription: boolean;
+    hasImage: boolean;
+    hasOffers: boolean;
+    complete: boolean;
+  };
+  identifiers: {
+    points: number;
+    max: number;
+    hasGTIN: boolean;
+    hasMPN: boolean;
+    hasSKU: boolean;
+    values: {
+      gtin: string | null;
+      mpn: string | null;
+      sku: string | null;
+    };
+    count: number;
+  };
+  pricing: {
+    points: number;
+    max: number;
+    found: boolean;
+    source: "schema" | "text" | null;
+    value: number | null;
+    currency: string | null;
+    hasPriceRange: boolean;
+  };
+  availability: {
+    points: number;
+    max: number;
+    found: boolean;
+    status: "in_stock" | "out_of_stock" | "preorder" | "unknown";
+    source: "schema" | "text" | null;
+  };
+  aggregateRating: {
+    points: number;
+    max: number;
+    found: boolean;
+    rating: number | null;
+    maxRating: number;
+    source: "schema" | "text" | null;
+  };
+  reviewCount: {
+    points: number;
+    max: number;
+    found: boolean;
+    count: number;
+  };
+  images: {
+    points: number;
+    max: number;
+    count: number;
+    withAlt: number;
+    productImages: number;
+  };
+  specifications: {
+    points: number;
+    max: number;
+    found: boolean;
+    count: number;
+    source: "table" | "list" | "schema" | null;
+  };
+  thirdPartyReviews: {
+    measurable: false;
+    importance: "high";
+    weight: string;
+    recommendation: string;
+  };
+}
+
+export interface ProductExtractabilityScore {
+  score: number;
+  max: number;
+  label: string;
+  breakdown: ProductExtractabilityBreakdown;
+}

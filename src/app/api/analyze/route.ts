@@ -3,16 +3,20 @@ import * as cheerio from "cheerio";
 import fetch from "node-fetch";
 import https from "https";
 import { 
-  calculatePageScore, 
-  calculateAggregateScore, 
+  calculateProductExtractabilityScore,
+  calculateSiteDiscoverabilityScore,
+  calculatePageScore,
   generateLlmsTxt, 
   generateSchemaForPage,
   generateOrganizationSchema,
   detectPageType,
+  detectUrlType,
   extractAllContent,
-  getComparisonContext
+  checkAICrawlerAccess,
+  getComparisonContext,
+  extractIdentifiers
 } from "@/lib/schema-generator";
-import { PageAnalysis, SiteAnalysis } from "@/lib/types";
+import { PageAnalysis, SiteAnalysis, UrlType } from "@/lib/types";
 
 const FETCH_TIMEOUT = 15000;
 const DEFAULT_MAX_PAGES = 100;
@@ -949,6 +953,15 @@ function aggregateResults(
     offerPages,
     pagesWithSchema,
     pagesWithoutSchema,
+    pagesWithGTIN: pages.filter(p => {
+      const ids = extractIdentifiers(p.jsonLdScripts);
+      return !!ids.gtin;
+    }).length,
+    pagesWithMPN: pages.filter(p => {
+      const ids = extractIdentifiers(p.jsonLdScripts);
+      return !!ids.mpn;
+    }).length,
+    pagesWithSKU: pages.filter(p => p.schemas.hasProductSchema || p.schemas.hasOfferSchema).length,
   };
 
   const pagesWithMetaDesc = pages.filter(p => p.metaDescription.length >= 120).length;
@@ -1101,6 +1114,73 @@ function aggregateResults(
   }
 
   const llmDiscoveryPrompts = generateLLMDiscoveryPrompts(pages, domain);
+  
+  // Calculate AI crawler access
+  const aiCrawlerAccess = checkAICrawlerAccess(robotsTxt);
+  
+  // Extract brands from pages
+  const brands = new Set<string>();
+  pages.forEach(p => {
+    if (p.h1Texts && p.h1Texts.length > 0) {
+      p.h1Texts.forEach(h1 => brands.add(h1));
+    }
+    if (p.title) brands.add(p.title.split("|")[0].split("-")[0].trim());
+  });
+  const brandVariations = Array.from(brands).filter(b => b.length > 2).slice(0, 5);
+  
+  // Extract categories from pages
+  const categories = new Set<string>();
+  pages.forEach(p => {
+    if (p.breadcrumbs && p.breadcrumbs.length > 0) {
+      p.breadcrumbs.forEach(b => categories.add(b));
+    }
+  });
+  const categoriesList = Array.from(categories);
+  
+  // Get organization schema info
+  const orgPage = pages.find(p => p.schemas.hasOrganizationSchema) || pages.find(p => p.pageType === "homepage") || pages[0];
+  const organizationSchemaInfo = {
+    present: orgPage?.schemas.hasOrganizationSchema || false,
+    hasName: !!orgPage?.title,
+    hasLogo: !!orgPage?.openGraph?.image,
+    hasSameAs: false,
+    hasDescription: !!orgPage?.metaDescription,
+  };
+  
+  // Calculate Site Discoverability Score
+  const siteDiscoverability = calculateSiteDiscoverabilityScore({
+    robotsTxt,
+    aiCrawlerAccess,
+    llmsTxt,
+    hasSitemap: !!sitemapXml,
+    sitemapProductCount: sitemapUrls.length,
+    organizationSchema: organizationSchemaInfo,
+    categories: categoriesList,
+    brandVariations,
+    isHttps: pages[0]?.url?.startsWith("https") || false,
+  });
+  
+  // Calculate Product Extractability Score (average of product pages)
+  const productPageList = pages.filter(p => p.pageType === "product");
+  let productExtractabilityScore = 0;
+  let productExtractabilityBreakdown = undefined;
+  
+  if (productPageList.length > 0) {
+    const scores = productPageList.map(p => {
+      const result = calculateProductExtractabilityScore(p);
+      return result;
+    });
+    productExtractabilityScore = Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length);
+    productExtractabilityBreakdown = scores[0]?.breakdown;
+  } else {
+    // Use first page as fallback
+    const firstPageScore = calculateProductExtractabilityScore(pages[0]);
+    productExtractabilityScore = firstPageScore.score;
+    productExtractabilityBreakdown = firstPageScore.breakdown;
+  }
+  
+  // Legacy aggregate score (average of two scores)
+  const aggregateScore = Math.round((siteDiscoverability.score + productExtractabilityScore) / 2);
 
   const siteData = {
     mainUrl: pages[0]?.url || "",
@@ -1119,8 +1199,6 @@ function aggregateResults(
     pageTypeBreakdown,
   };
 
-  const { score: aggregateScore, breakdown: aggregateScoreBreakdown } = calculateAggregateScore(siteData as any);
-
   const generatedLlmsTxt = generateLlmsTxt(siteData as any);
   
   const organizationSchema = generateOrganizationSchema(siteData as any);
@@ -1132,13 +1210,26 @@ function aggregateResults(
     .slice(0, 5)
     .flatMap(p => generateSchemaForPage(p));
 
-  // Get comparison context
-  const comparisonContext = getComparisonContext(aggregateScore);
+  // Get comparison contexts
+  const siteComparison = getComparisonContext(siteDiscoverability.score);
+  const productComparison = getComparisonContext(productExtractabilityScore);
+  
+  // Detect URL type
+  const urlTypeAnalysis = detectUrlType(pages[0]?.url || "");
+  const analyzedSingleProduct = urlTypeAnalysis.type === "product" && pages.length === 1;
+  const showFullSiteOption = analyzedSingleProduct;
 
   return {
     ...siteData,
+    siteDiscoverabilityScore: siteDiscoverability.score,
+    siteDiscoverabilityBreakdown: siteDiscoverability.breakdown,
+    productExtractabilityScore,
+    productExtractabilityBreakdown,
+    analyzedUrlType: urlTypeAnalysis.type,
+    analyzedSingleProduct,
+    showFullSiteOption,
     aggregateScore,
-    aggregateScoreBreakdown,
+    aggregateScoreBreakdown: undefined,
     aggregateFactors,
     aggregateRecommendations,
     llmDiscoveryPrompts,
@@ -1154,7 +1245,13 @@ function aggregateResults(
       brandRecognition: false,
       citationDensity: false,
       userBehavior: false,
+      externalMentions: false,
+      thirdPartyReviews: false,
     },
-    comparisonContext,
+    comparisonContext: {
+      siteDiscoverability: siteComparison,
+      productExtractability: productComparison,
+      comparedTo: "typical e-commerce sites",
+    },
   };
 }

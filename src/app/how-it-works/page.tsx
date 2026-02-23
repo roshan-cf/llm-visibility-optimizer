@@ -41,13 +41,38 @@ export default function HowItWorks() {
         <section className="mb-20">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold">⚙</div>
-            <h2 className="text-3xl font-bold">The Scoring Methodology</h2>
+            <h2 className="text-3xl font-bold">Two-Layer Scoring Model</h2>
           </div>
 
           <div className="bg-white dark:bg-gray-800/50 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700">
             <p className="text-gray-600 dark:text-gray-400 mb-8 text-lg">
-              Our <strong>Content Extractability Score</strong> (0-100) measures whether LLMs can understand your product information. We use <strong>OR logic</strong> throughout — schema markup is preferred, but content extraction works too.
+              We measure <strong>two distinct questions</strong> LLMs answer when users search for products:
             </p>
+
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-2xl border border-blue-200 dark:border-blue-800">
+                <h3 className="text-xl font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                  Layer 1: Site Discoverability
+                </h3>
+                <p className="text-blue-700 dark:text-blue-300 text-sm mb-4">
+                  <strong>"Where can I buy X?"</strong>
+                </p>
+                <p className="text-blue-600 dark:text-blue-400 text-sm">
+                  Can LLMs discover your brand when users search for products in your category? Measures site-wide factors like llms.txt, AI crawler access, sitemap, and organization schema.
+                </p>
+              </div>
+              <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                <h3 className="text-xl font-semibold text-emerald-800 dark:text-emerald-200 mb-3">
+                  Layer 2: Product Extractability
+                </h3>
+                <p className="text-emerald-700 dark:text-emerald-300 text-sm mb-4">
+                  <strong>"Is THIS product good?"</strong>
+                </p>
+                <p className="text-emerald-600 dark:text-emerald-400 text-sm">
+                  Can LLMs understand your product and recommend it? Measures product-specific factors like schema, pricing, availability, ratings, and specifications.
+                </p>
+              </div>
+            </div>
 
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-6 mb-8 border border-amber-200 dark:border-amber-800">
               <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3">Key Insight: Schema vs. Content</h4>
@@ -59,26 +84,74 @@ export default function HowItWorks() {
               </p>
             </div>
 
-            <h3 className="text-xl font-semibold mb-4">Page-Level Scoring (Product Pages Only)</h3>
+            <h3 className="text-xl font-semibold mb-4">Layer 1: Site Discoverability Breakdown</h3>
+            <div className="space-y-4 mb-10">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium">llms.txt Presence</span>
+                  <span className="badge badge-info">High Impact</span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Binary: present (full points) or missing (zero). The new standard for LLM discoverability.
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium">AI Crawler Access</span>
+                  <span className="badge badge-info">High Impact</span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Checks robots.txt for OAI-SearchBot, GPTBot, ChatGPT-User. These bots power ChatGPT Shopping results.
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium">Sitemap & Organization Schema</span>
+                  <span className="badge badge-warning">Medium Impact</span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Sitemap helps crawlers discover pages. Organization schema builds brand identity for LLMs.
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium text-red-800 dark:text-red-200">External Mentions & Domain Authority</span>
+                  <span className="badge badge-error">Can't Measure</span>
+                </div>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  These are CRITICAL for actual LLM visibility but require external data. We show recommendations instead of scores.
+                </p>
+              </div>
+            </div>
+
+            <h3 className="text-xl font-semibold mb-4">Layer 2: Product Extractability Breakdown</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-              Only product and collection pages receive scores. Homepages, blogs, and utility pages are marked N/A since they serve different purposes.
+              Only product pages receive extractability scores. Homepages, blogs, and utility pages are marked N/A.
             </p>
 
             <div className="space-y-6">
               <ScoreFactor 
-                title="Identity (25 points)" 
+                title="Product Schema (25 points)" 
                 weight={25}
                 impact="Critical"
-                calculation="Product Name: 10pts (schema OR h1 OR title). Description: 10pts (schema OR meta desc). Category: 5pts (schema OR breadcrumb OR URL)."
-                why="Can an LLM identify WHAT this product is? This is the foundation of visibility."
+                calculation="Name: 5pts. Description: 5pts. Image: 5pts. Offers: 5pts. Complete schema: bonus 5pts."
+                why="Structured data is the fastest, most reliable way for LLMs to understand your product."
               />
               
               <ScoreFactor 
-                title="Pricing (20 points)" 
-                weight={20}
+                title="Identifiers (15 points)" 
+                weight={15}
+                impact="High"
+                calculation="GTIN: 5pts. MPN: 5pts. SKU: 5pts. At least one identifier strongly recommended."
+                why="GTIN/MPN/SKU help LLMs match your product across platforms and price comparison sites."
+              />
+
+              <ScoreFactor 
+                title="Pricing (15 points)" 
+                weight={15}
                 impact="Critical"
-                calculation="Price: 15pts (schema OR $₹€£ pattern). Currency: 5pts (schema OR symbol detection)."
-                why="Price information is essential for shopping queries. LLMs need to know the cost."
+                calculation="Price: 12pts (schema OR $₹€£ pattern). Currency: 3pts (schema OR symbol detection)."
+                why="Price is essential for shopping queries. LLMs need to know the cost to recommend."
               />
 
               <ScoreFactor 
@@ -86,63 +159,33 @@ export default function HowItWorks() {
                 weight={10}
                 impact="High"
                 calculation="Stock Status: 10pts (schema OR 'In Stock' text OR 'Add to Cart' button)."
-                why="LLMs won't recommend products that are out of stock. Availability must be clear."
+                why="LLMs won't recommend products that are out of stock."
               />
 
               <ScoreFactor 
-                title="Reviews (20 points)" 
+                title="Ratings & Reviews (20 points)" 
                 weight={20}
                 impact="High"
-                calculation="Has Reviews: 8pts. Rating Value: 6pts (schema OR ★★★★☆ pattern). Review Count: 6pts (schema OR '123 reviews' text)."
+                calculation="Rating: 10pts (schema OR ★★★★☆ pattern). Review Count: 10pts."
                 why="Social proof is critical. LLMs prefer products with ratings and reviews."
               />
 
               <ScoreFactor 
-                title="Specifications (15 points)" 
+                title="Images & Specifications (15 points)" 
                 weight={15}
                 impact="Medium"
-                calculation="Specs/Features: 10pts (table/list detected). Images: 5pts (2+ images = full, 1 = partial)."
-                why="Detailed specs help LLMs answer comparison questions like 'Which laptop has 16GB RAM?'"
+                calculation="Images: 8pts (count + alt text). Specs: 7pts (table/list detected)."
+                why="Visual and detailed specs help LLMs answer comparison questions."
               />
 
-              <ScoreFactor 
-                title="Trust (10 points)" 
-                weight={10}
-                impact="Medium"
-                calculation="Brand: 5pts (schema OR text). Purchase Path: 5pts ('Add to Cart' / 'Buy Now' detected)."
-                why="Trust signals help LLMs assess legitimacy. Clear purchase CTAs indicate a real product."
-              />
-
-              <ScoreFactor 
-                title="Schema Bonus (+15 points)" 
-                weight={15}
-                impact="Bonus"
-                calculation="Product Schema: +5pts. AggregateRating Schema: +5pts. Offer Schema: +5pts."
-                why="Schema is faster and more reliable for LLMs. You get bonus points for using structured data."
-              />
-            </div>
-
-            <h3 className="text-xl font-semibold mt-10 mb-4">Site-Level Scoring</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
-                <div className="text-sm font-medium mb-2">Product Extractability</div>
-                <div className="text-2xl font-bold text-indigo-600">35%</div>
-                <div className="text-xs text-gray-500">Average of product page scores</div>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
-                <div className="text-sm font-medium mb-2">Schema Bonus</div>
-                <div className="text-2xl font-bold text-indigo-600">15%</div>
-                <div className="text-xs text-gray-500">% of pages with schema</div>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
-                <div className="text-sm font-medium mb-2">llms.txt</div>
-                <div className="text-2xl font-bold text-indigo-600">10%</div>
-                <div className="text-xs text-gray-500">Binary: present or not</div>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
-                <div className="text-sm font-medium mb-2">Other Factors</div>
-                <div className="text-2xl font-bold text-indigo-600">40%</div>
-                <div className="text-xs text-gray-500">Linking, coverage, freshness, etc.</div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium text-red-800 dark:text-red-200">Third-Party Reviews</span>
+                  <span className="badge badge-error">Can't Measure</span>
+                </div>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  Reviews on Reddit, forums, and external sites impact LLM recommendations heavily but require external data.
+                </p>
               </div>
             </div>
           </div>

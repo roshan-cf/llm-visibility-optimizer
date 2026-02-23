@@ -23,7 +23,11 @@ import {
   GeneratedSchema,
   PageScoreBreakdown,
   PageType,
-  ContentExtraction
+  ContentExtraction,
+  SiteDiscoverabilityScore,
+  SiteDiscoverabilityBreakdown,
+  ProductExtractabilityScore,
+  ProductExtractabilityBreakdown
 } from "./types";
 
 // ============================================
@@ -1398,8 +1402,6 @@ export function generateOrganizationSchema(result: SiteAnalysis): GeneratedSchem
  * Provides percentile ranking compared to typical e-commerce sites
  */
 export function getComparisonContext(score: number): { percentile: number; label: string; comparedTo: string } {
-  // Rough distribution based on typical e-commerce sites
-  // Most sites score between 20-60, with few above 80
   let percentile: number;
   let label: string;
   
@@ -1424,5 +1426,600 @@ export function getComparisonContext(score: number): { percentile: number; label
     percentile: Math.round(percentile),
     label,
     comparedTo: "typical e-commerce sites"
+  };
+}
+
+// ============================================
+// URL TYPE DETECTION
+// ============================================
+
+export type UrlType = "domain" | "product" | "collection";
+
+/**
+ * Detects if the entered URL is a domain, product page, or collection
+ */
+export function detectUrlType(url: string): {
+  type: UrlType;
+  domain: string;
+  isProductPage: boolean;
+  isHomepage: boolean;
+  isCollection: boolean;
+} {
+  const urlObj = new URL(url);
+  const urlPath = urlObj.pathname.toLowerCase();
+  const domain = urlObj.hostname;
+  
+  // Homepage = domain
+  if (urlPath === "/" || urlPath === "") {
+    return { type: "domain", domain, isProductPage: false, isHomepage: true, isCollection: false };
+  }
+  
+  // Product page patterns
+  const productPatterns = [
+    /\/products?\//i,
+    /\/p\//i,
+    /\/dp\//i,
+    /\/item\//i,
+    /\/product-/i,
+    /\?product=/i,
+    /\/[a-z0-9]+\/p-[a-z0-9]+/i,
+  ];
+  
+  if (productPatterns.some(p => p.test(urlPath))) {
+    return { type: "product", domain, isProductPage: true, isHomepage: false, isCollection: false };
+  }
+  
+  // Collection patterns
+  const collectionPatterns = [
+    /\/collections?\//i,
+    /\/categories?\//i,
+    /\/category\//i,
+    /\/c\//i,
+    /\/shop\//i,
+    /\/catalog\//i,
+  ];
+  
+  if (collectionPatterns.some(p => p.test(urlPath))) {
+    return { type: "collection", domain, isProductPage: false, isHomepage: false, isCollection: true };
+  }
+  
+  return { type: "domain", domain, isProductPage: false, isHomepage: false, isCollection: false };
+}
+
+// ============================================
+// AI CRAWLER ACCESS CHECK
+// ============================================
+
+/**
+ * Checks if robots.txt allows AI crawlers (OAI-SearchBot, GPTBot, ChatGPT-User)
+ */
+export function checkAICrawlerAccess(robotsTxt: string | null): {
+  allowsOAI: boolean;
+  allowsGPTBot: boolean;
+  allowsChatGPTUser: boolean;
+  hasRobotsTxt: boolean;
+  details: string;
+} {
+  if (!robotsTxt) {
+    return {
+      allowsOAI: true,
+      allowsGPTBot: true,
+      allowsChatGPTUser: true,
+      hasRobotsTxt: false,
+      details: "No robots.txt found - all crawlers allowed by default",
+    };
+  }
+  
+  const lines = robotsTxt.split("\n");
+  const blocked: Record<string, boolean> = {
+    oai: false,
+    gptbot: false,
+    chatgpt: false,
+    all: false,
+  };
+  
+  let currentUserAgent = "";
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const lowerLine = trimmed.toLowerCase();
+    
+    if (lowerLine.startsWith("user-agent:")) {
+      currentUserAgent = lowerLine.substring(11).trim();
+    } else if (lowerLine.startsWith("disallow:")) {
+      const path = trimmed.substring(9).trim();
+      if (path === "/" || path === "/*") {
+        if (currentUserAgent === "*" || currentUserAgent === "") {
+          blocked.all = true;
+        }
+        if (currentUserAgent === "oai-searchbot") blocked.oai = true;
+        if (currentUserAgent === "gptbot") blocked.gptbot = true;
+        if (currentUserAgent === "chatgpt-user") blocked.chatgpt = true;
+      }
+    }
+  }
+  
+  // If * is blocked, specific bots inherit unless explicitly allowed
+  const allowsOAI = !blocked.oai && !blocked.all;
+  const allowsGPTBot = !blocked.gptbot && !blocked.all;
+  const allowsChatGPTUser = !blocked.chatgpt && !blocked.all;
+  
+  const details: string[] = [];
+  if (!allowsOAI) details.push("OAI-SearchBot blocked");
+  if (!allowsGPTBot) details.push("GPTBot blocked");
+  if (!allowsChatGPTUser) details.push("ChatGPT-User blocked");
+  if (details.length === 0) details.push("All AI crawlers allowed");
+  
+  return {
+    allowsOAI,
+    allowsGPTBot,
+    allowsChatGPTUser,
+    hasRobotsTxt: true,
+    details: details.join(", "),
+  };
+}
+
+// ============================================
+// IDENTIFIER EXTRACTION
+// ============================================
+
+/**
+ * Extracts GTIN, MPN, SKU from schema and content
+ */
+export function extractIdentifiers(
+  jsonLdScripts: unknown[],
+  bodyText?: string
+): {
+  gtin: string | null;
+  mpn: string | null;
+  sku: string | null;
+} {
+  let gtin: string | null = null;
+  let mpn: string | null = null;
+  let sku: string | null = null;
+  
+  for (const schema of jsonLdScripts) {
+    if (typeof schema === "object" && schema !== null) {
+      const s = schema as Record<string, unknown>;
+      if (s["gtin"] && !gtin) gtin = String(s["gtin"]);
+      if (s["gtin13"] && !gtin) gtin = String(s["gtin13"]);
+      if (s["gtin14"] && !gtin) gtin = String(s["gtin14"]);
+      if (s["gtin8"] && !gtin) gtin = String(s["gtin8"]);
+      if (s["mpn"] && !mpn) mpn = String(s["mpn"]);
+      if (s["sku"] && !sku) sku = String(s["sku"]);
+      if (s["productID"] && !sku) sku = String(s["productID"]);
+    }
+  }
+  
+  // Try content patterns if not found in schema
+  if (bodyText) {
+    if (!gtin) {
+      const gtinMatch = bodyText.match(/(?:GTIN|EAN|UPC)[:\s]*(\d{8,14})/i);
+      if (gtinMatch) gtin = gtinMatch[1];
+    }
+    if (!mpn) {
+      const mpnMatch = bodyText.match(/(?:MPN|Manufacturer\s*Part)[:\s]*([A-Z0-9][A-Z0-9-]+)/i);
+      if (mpnMatch) mpn = mpnMatch[1];
+    }
+    if (!sku) {
+      const skuMatch = bodyText.match(/(?:SKU|Item\s*#)[:\s]*([A-Z0-9][A-Z0-9-]+)/i);
+      if (skuMatch) sku = skuMatch[1];
+    }
+  }
+  
+  return { gtin, mpn, sku };
+}
+
+// ============================================
+// SITE DISCOVERABILITY SCORE
+// ============================================
+
+/**
+ * Evaluates llms.txt content quality
+ */
+function evaluateLlmsTxtQuality(content: string): "complete" | "partial" | "missing" {
+  const hasSections = {
+    tagline: /^>\s*.+/m.test(content),
+    products: /^##\s*Products/mi.test(content),
+    categories: /^##\s*Categories/mi.test(content),
+    about: /^##\s*About/mi.test(content),
+    keyPages: /^##\s*Key\s*Pages/mi.test(content),
+  };
+  
+  const sectionCount = Object.values(hasSections).filter(Boolean).length;
+  
+  if (sectionCount >= 4) return "complete";
+  if (sectionCount >= 2) return "partial";
+  return "missing";
+}
+
+/**
+ * Calculates Site Discoverability Score
+ * Question: Can LLMs discover your brand when users search for products in your category?
+ */
+export function calculateSiteDiscoverabilityScore(params: {
+  robotsTxt: string | null;
+  aiCrawlerAccess: ReturnType<typeof checkAICrawlerAccess>;
+  llmsTxt: string | null;
+  hasSitemap: boolean;
+  sitemapProductCount: number;
+  organizationSchema: {
+    present: boolean;
+    hasName: boolean;
+    hasLogo: boolean;
+    hasSameAs: boolean;
+    hasDescription: boolean;
+  };
+  categories: string[];
+  brandVariations: string[];
+  isHttps: boolean;
+}): SiteDiscoverabilityScore {
+  const breakdown: SiteDiscoverabilityBreakdown = {
+    llmsTxt: {
+      points: 0,
+      max: 20,
+      present: false,
+      hasContent: false,
+      hasCategories: false,
+      hasProducts: false,
+      quality: "missing",
+    },
+    aiCrawlerAccess: {
+      points: 0,
+      max: 15,
+      allowsOAI: false,
+      allowsGPTBot: false,
+      allowsChatGPTUser: false,
+      hasRobotsTxt: false,
+      details: "",
+    },
+    sitemap: {
+      points: 0,
+      max: 15,
+      present: false,
+      productCount: 0,
+      urlCount: 0,
+    },
+    organizationSchema: {
+      points: 0,
+      max: 15,
+      present: false,
+      hasName: false,
+      hasLogo: false,
+      hasSameAs: false,
+      hasDescription: false,
+    },
+    categoryPresence: {
+      points: 0,
+      max: 10,
+      categories: [],
+      count: 0,
+    },
+    brandConsistency: {
+      points: 0,
+      max: 10,
+      consistent: false,
+      brandVariations: [],
+      dominantBrand: null,
+    },
+    technicalHealth: {
+      points: 0,
+      max: 10,
+      https: false,
+      accessible: false,
+      noMajorErrors: true,
+    },
+    externalMentions: {
+      measurable: false,
+      importance: "high",
+      weight: "15%",
+      recommendation: "Get mentioned on Reddit, review sites, and forums. Third-party mentions are a strong signal for LLM discoverability.",
+    },
+    domainAuthority: {
+      measurable: false,
+      importance: "medium",
+      weight: "10%",
+      recommendation: "Build backlinks and get featured in Wikipedia and industry publications.",
+    },
+  };
+  
+  let totalScore = 0;
+  
+  // 1. llms.txt (20 points)
+  if (params.llmsTxt) {
+    breakdown.llmsTxt.present = true;
+    breakdown.llmsTxt.hasContent = params.llmsTxt.length > 50;
+    breakdown.llmsTxt.hasCategories = /##\s*Categories/i.test(params.llmsTxt);
+    breakdown.llmsTxt.hasProducts = /##\s*Products/i.test(params.llmsTxt);
+    
+    const quality = evaluateLlmsTxtQuality(params.llmsTxt);
+    breakdown.llmsTxt.quality = quality;
+    
+    if (quality === "complete") {
+      breakdown.llmsTxt.points = 20;
+    } else if (quality === "partial") {
+      breakdown.llmsTxt.points = 12;
+    } else {
+      breakdown.llmsTxt.points = 5;
+    }
+    totalScore += breakdown.llmsTxt.points;
+  }
+  
+  // 2. AI Crawler Access (15 points)
+  breakdown.aiCrawlerAccess = {
+    ...params.aiCrawlerAccess,
+    points: 0,
+    max: 15,
+  };
+  const crawlerScore = 
+    (params.aiCrawlerAccess.allowsOAI ? 5 : 0) +
+    (params.aiCrawlerAccess.allowsGPTBot ? 5 : 0) +
+    (params.aiCrawlerAccess.allowsChatGPTUser ? 5 : 0);
+  breakdown.aiCrawlerAccess.points = crawlerScore;
+  totalScore += crawlerScore;
+  
+  // 3. Sitemap (15 points)
+  breakdown.sitemap.present = params.hasSitemap;
+  breakdown.sitemap.productCount = params.sitemapProductCount;
+  if (params.hasSitemap) {
+    if (params.sitemapProductCount > 100) {
+      breakdown.sitemap.points = 15;
+    } else if (params.sitemapProductCount > 20) {
+      breakdown.sitemap.points = 10;
+    } else {
+      breakdown.sitemap.points = 5;
+    }
+    totalScore += breakdown.sitemap.points;
+  }
+  
+  // 4. Organization Schema (15 points)
+  breakdown.organizationSchema = { ...params.organizationSchema, points: 0, max: 15 };
+  if (params.organizationSchema.present) {
+    let orgScore = 0;
+    if (params.organizationSchema.hasName) orgScore += 5;
+    if (params.organizationSchema.hasLogo) orgScore += 4;
+    if (params.organizationSchema.hasSameAs) orgScore += 4;
+    if (params.organizationSchema.hasDescription) orgScore += 2;
+    breakdown.organizationSchema.points = orgScore;
+    totalScore += orgScore;
+  }
+  
+  // 5. Category Presence (10 points)
+  breakdown.categoryPresence.categories = params.categories;
+  breakdown.categoryPresence.count = params.categories.length;
+  if (params.categories.length > 0) {
+    breakdown.categoryPresence.points = Math.min(10, params.categories.length * 2);
+    totalScore += breakdown.categoryPresence.points;
+  }
+  
+  // 6. Brand Consistency (10 points)
+  breakdown.brandConsistency.brandVariations = params.brandVariations;
+  breakdown.brandConsistency.consistent = params.brandVariations.length <= 1;
+  breakdown.brandConsistency.dominantBrand = params.brandVariations[0] || null;
+  if (params.brandVariations.length === 1) {
+    breakdown.brandConsistency.points = 10;
+    totalScore += 10;
+  } else if (params.brandVariations.length <= 3) {
+    breakdown.brandConsistency.points = 5;
+    totalScore += 5;
+  }
+  
+  // 7. Technical Health (10 points)
+  breakdown.technicalHealth.https = params.isHttps;
+  breakdown.technicalHealth.accessible = true;
+  if (params.isHttps) {
+    breakdown.technicalHealth.points = 10;
+    totalScore += 10;
+  }
+  
+  const label = totalScore >= 80 ? "Excellent" : totalScore >= 60 ? "Good" : totalScore >= 40 ? "Fair" : "Poor";
+  
+  return {
+    score: Math.min(100, totalScore),
+    max: 100,
+    label,
+    breakdown,
+  };
+}
+
+// ============================================
+// PRODUCT EXTRACTABILITY SCORE
+// ============================================
+
+/**
+ * Calculates Product Extractability Score
+ * Question: Can LLMs understand your product and recommend it?
+ */
+export function calculateProductExtractabilityScore(page: PageAnalysis): ProductExtractabilityScore {
+  const extraction = page.contentExtraction || extractAllContent(page);
+  const identifiers = extractIdentifiers(page.jsonLdScripts);
+  
+  const breakdown: ProductExtractabilityBreakdown = {
+    productSchema: {
+      points: 0,
+      max: 15,
+      present: false,
+      hasName: false,
+      hasDescription: false,
+      hasImage: false,
+      hasOffers: false,
+      complete: false,
+    },
+    identifiers: {
+      points: 0,
+      max: 15,
+      hasGTIN: false,
+      hasMPN: false,
+      hasSKU: false,
+      values: { gtin: null, mpn: null, sku: null },
+      count: 0,
+    },
+    pricing: {
+      points: 0,
+      max: 15,
+      found: false,
+      source: null,
+      value: null,
+      currency: null,
+      hasPriceRange: false,
+    },
+    availability: {
+      points: 0,
+      max: 10,
+      found: false,
+      status: "unknown",
+      source: null,
+    },
+    aggregateRating: {
+      points: 0,
+      max: 15,
+      found: false,
+      rating: null,
+      maxRating: 5,
+      source: null,
+    },
+    reviewCount: {
+      points: 0,
+      max: 10,
+      found: false,
+      count: 0,
+    },
+    images: {
+      points: 0,
+      max: 5,
+      count: 0,
+      withAlt: 0,
+      productImages: 0,
+    },
+    specifications: {
+      points: 0,
+      max: 10,
+      found: false,
+      count: 0,
+      source: null,
+    },
+    thirdPartyReviews: {
+      measurable: false,
+      importance: "high",
+      weight: "15%",
+      recommendation: "Get reviews on Reddit, independent review sites, and forums. External reviews are critical for LLM recommendations.",
+    },
+  };
+  
+  let totalScore = 0;
+  
+  // 1. Product Schema (15 points)
+  breakdown.productSchema.present = page.schemas.hasProductSchema;
+  if (page.schemas.hasProductSchema) {
+    breakdown.productSchema.hasName = extraction.productName?.source === "schema";
+    breakdown.productSchema.hasDescription = page.metaDescription?.length > 0;
+    breakdown.productSchema.hasImage = (extraction.images?.count || 0) > 0;
+    breakdown.productSchema.hasOffers = page.schemas.hasOfferSchema || extraction.price?.source === "schema";
+    
+    let schemaScore = 8;
+    if (breakdown.productSchema.hasName && breakdown.productSchema.hasOffers) {
+      schemaScore = 15;
+      breakdown.productSchema.complete = true;
+    } else if (breakdown.productSchema.hasName) {
+      schemaScore = 12;
+    }
+    breakdown.productSchema.points = schemaScore;
+    totalScore += schemaScore;
+  }
+  
+  // 2. Identifiers (15 points)
+  breakdown.identifiers.hasGTIN = !!identifiers.gtin;
+  breakdown.identifiers.hasMPN = !!identifiers.mpn;
+  breakdown.identifiers.hasSKU = !!identifiers.sku;
+  breakdown.identifiers.values = {
+    gtin: identifiers.gtin,
+    mpn: identifiers.mpn,
+    sku: identifiers.sku,
+  };
+  breakdown.identifiers.count = [identifiers.gtin, identifiers.mpn, identifiers.sku].filter(Boolean).length;
+  
+  let identifierScore = 0;
+  if (identifiers.gtin) identifierScore += 8;
+  if (identifiers.mpn) identifierScore += 4;
+  if (identifiers.sku) identifierScore += 3;
+  breakdown.identifiers.points = Math.min(15, identifierScore);
+  totalScore += breakdown.identifiers.points;
+  
+  // 3. Pricing (15 points)
+  breakdown.pricing.found = !!extraction.price?.value;
+  breakdown.pricing.source = extraction.price?.source || null;
+  breakdown.pricing.value = extraction.price?.value || null;
+  breakdown.pricing.currency = extraction.price?.currency || null;
+  if (extraction.price?.value) {
+    breakdown.pricing.points = 15;
+    totalScore += 15;
+  }
+  
+  // 4. Availability (10 points)
+  breakdown.availability.found = extraction.availability?.status !== "unknown";
+  breakdown.availability.status = extraction.availability?.status || "unknown";
+  breakdown.availability.source = extraction.availability?.source || null;
+  if (extraction.availability?.status && extraction.availability.status !== "unknown") {
+    breakdown.availability.points = 10;
+    totalScore += 10;
+  }
+  
+  // 5. Aggregate Rating (15 points)
+  const ratingValue = page.reviews?.averageRating || extraction.rating?.value;
+  const ratingCount = page.reviews?.reviewCount || extraction.rating?.count || 0;
+  breakdown.aggregateRating.found = !!ratingValue;
+  breakdown.aggregateRating.rating = ratingValue || null;
+  breakdown.aggregateRating.source = page.reviews?.averageRating ? "schema" : extraction.rating?.source || null;
+  if (ratingValue) {
+    let ratingScore = 8;
+    if (ratingCount >= 50) ratingScore = 15;
+    else if (ratingCount >= 10) ratingScore = 12;
+    breakdown.aggregateRating.points = ratingScore;
+    totalScore += ratingScore;
+  }
+  
+  // 6. Review Count (10 points)
+  breakdown.reviewCount.found = ratingCount > 0;
+  breakdown.reviewCount.count = ratingCount;
+  if (ratingCount > 0) {
+    let countScore = 5;
+    if (ratingCount >= 100) countScore = 10;
+    else if (ratingCount >= 20) countScore = 7;
+    breakdown.reviewCount.points = countScore;
+    totalScore += countScore;
+  }
+  
+  // 7. Images (5 points)
+  const imageCount = extraction.images?.count || page.images?.total || 0;
+  const withAlt = extraction.images?.hasAlt || page.images?.withAlt || 0;
+  breakdown.images.count = imageCount;
+  breakdown.images.withAlt = withAlt;
+  if (imageCount >= 2) {
+    const altRatio = imageCount > 0 ? withAlt / imageCount : 0;
+    if (altRatio >= 0.8) {
+      breakdown.images.points = 5;
+      totalScore += 5;
+    } else if (altRatio >= 0.5) {
+      breakdown.images.points = 3;
+      totalScore += 3;
+    }
+  }
+  
+  // 8. Specifications (10 points)
+  breakdown.specifications.found = extraction.specifications?.detected || false;
+  breakdown.specifications.count = extraction.specifications?.count || 0;
+  breakdown.specifications.source = extraction.specifications?.source || null;
+  if (extraction.specifications?.detected) {
+    breakdown.specifications.points = extraction.specifications.count >= 3 ? 10 : 5;
+    totalScore += breakdown.specifications.points;
+  }
+  
+  const label = totalScore >= 80 ? "Excellent" : totalScore >= 60 ? "Good" : totalScore >= 40 ? "Fair" : "Poor";
+  
+  return {
+    score: Math.min(100, totalScore),
+    max: 100,
+    label,
+    breakdown,
   };
 }

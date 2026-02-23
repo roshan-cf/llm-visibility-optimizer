@@ -1,10 +1,72 @@
 "use client";
 
 import { useState } from "react";
-import { AnalysisResult } from "@/lib/types";
+import { AnalysisResult, SiteDiscoverabilityBreakdown, ProductExtractabilityBreakdown } from "@/lib/types";
 
 interface VisibilityScoreProps {
   result: AnalysisResult;
+}
+
+function TwoLayerScoreCard({
+  title,
+  subtitle,
+  score,
+  breakdown,
+  isProductPage,
+}: {
+  title: string;
+  subtitle: string;
+  score: number;
+  breakdown?: SiteDiscoverabilityBreakdown | ProductExtractabilityBreakdown | null;
+  isProductPage?: boolean;
+}) {
+  const getScoreColor = (s: number) => {
+    if (s >= 80) return "from-emerald-500 to-teal-500";
+    if (s >= 60) return "from-blue-500 to-indigo-500";
+    if (s >= 40) return "from-amber-500 to-orange-500";
+    return "from-red-500 to-rose-500";
+  };
+
+  const getScoreLabel = (s: number) => {
+    if (s >= 80) return { text: "Excellent", badge: "badge-success" };
+    if (s >= 60) return { text: "Good", badge: "badge-info" };
+    if (s >= 40) return { text: "Fair", badge: "badge-warning" };
+    return { text: "Needs Work", badge: "badge-error" };
+  };
+
+  const scoreInfo = getScoreLabel(score);
+
+  return (
+    <div className="card-modern p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 className="font-semibold text-lg">{title}</h3>
+          <p className="text-xs text-zinc-500">{subtitle}</p>
+        </div>
+        {isProductPage && (
+          <span className="badge badge-info text-xs">Single Product</span>
+        )}
+      </div>
+      <div className="flex items-center gap-4">
+        <div className={`text-5xl font-bold bg-gradient-to-r ${getScoreColor(score)} bg-clip-text text-transparent`}>
+          {score}
+        </div>
+        <div className="flex-1">
+          <span className={`badge ${scoreInfo.badge}`}>{scoreInfo.text}</span>
+          {breakdown && "externalMentions" in breakdown && (
+            <p className="text-xs text-zinc-500 mt-2">
+              External mentions & domain authority affect discoverability but can't be measured
+            </p>
+          )}
+          {breakdown && "thirdPartyReviews" in breakdown && (
+            <p className="text-xs text-zinc-500 mt-2">
+              Third-party reviews (Reddit, forums) impact recommendations but can't be measured
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function VisibilityScore({ result }: VisibilityScoreProps) {
@@ -18,22 +80,6 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
 
   // Check if URL was redirected
   const resolvedUrl = (result as any).resolvedUrl;
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "from-emerald-500 to-teal-500";
-    if (score >= 60) return "from-blue-500 to-indigo-500";
-    if (score >= 40) return "from-amber-500 to-orange-500";
-    return "from-red-500 to-rose-500";
-  };
-
-  const getScoreLabel = (score: number) => {
-    if (score >= 80) return { text: "Excellent", badge: "badge-success" };
-    if (score >= 60) return { text: "Good", badge: "badge-info" };
-    if (score >= 40) return { text: "Needs Work", badge: "badge-warning" };
-    return { text: "Poor", badge: "badge-error" };
-  };
-
-  const scoreInfo = getScoreLabel(result.aggregateScore);
 
   return (
     <div className="space-y-6">
@@ -100,33 +146,39 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
         </p>
       </div>
 
-      {/* Main Score Card */}
-      <div className="card-modern p-8">
-        <div className="flex flex-col md:flex-row items-center gap-6">
-          <div className={`text-8xl font-bold bg-gradient-to-r ${getScoreColor(result.aggregateScore)} bg-clip-text text-transparent`}>
-            {result.aggregateScore}
-          </div>
-          <div className="flex-1 text-center md:text-left">
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-3">
-              <span className={`badge ${scoreInfo.badge}`}>{scoreInfo.text}</span>
-              {result.comparisonContext && (
-                <span className="badge badge-info">{result.comparisonContext.label}</span>
-              )}
-              <span className="text-zinc-500 text-sm">LLM Readiness Score</span>
+      {/* Two-Layer Score Cards */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <TwoLayerScoreCard
+          title="Site Discoverability"
+          subtitle="Can LLMs find your brand?"
+          score={result.siteDiscoverabilityScore}
+          breakdown={result.siteDiscoverabilityBreakdown}
+        />
+        <TwoLayerScoreCard
+          title="Product Extractability"
+          subtitle="Can LLMs understand your product?"
+          score={result.productExtractabilityScore}
+          breakdown={result.productExtractabilityBreakdown}
+          isProductPage={result.analyzedSingleProduct}
+        />
+      </div>
+
+      {/* Analyze Full Site Button */}
+      {result.showFullSiteOption && (
+        <div className="card-modern p-6 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-indigo-200 dark:border-indigo-800">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+              <h3 className="font-semibold text-indigo-800 dark:text-indigo-200">Analyzed a single product page</h3>
+              <p className="text-sm text-indigo-600 dark:text-indigo-400 mt-1">
+                Get a complete Site Discoverability score by analyzing your full site
+              </p>
             </div>
-            <p className="text-zinc-600 dark:text-zinc-400 text-sm">
-              Analyzed {result.pagesAnalyzed} pages from <span className="font-medium text-zinc-900 dark:text-white">{result.domain}</span>
-            </p>
-            <p className="text-zinc-500 text-sm mt-2">
-              {result.aggregateScore >= 70
-                ? "Your site is well-optimized for AI visibility. Focus on maintaining coverage."
-                : result.aggregateScore >= 50
-                ? "Decent AI visibility with room for improvement. See recommendations below."
-                : "Significant improvements needed. Start with structured data implementation."}
-            </p>
+            <button className="btn-primary whitespace-nowrap">
+              Analyze Full Site
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Schema Coverage */}
       <div className="card-modern p-6">
