@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AnalysisResult, SiteDiscoverabilityBreakdown, ProductExtractabilityBreakdown } from "@/lib/types";
+import { AnalysisResult, SiteDiscoverabilityBreakdown, ExtractabilityBreakdown } from "@/lib/types";
+import { ActionCard } from "./ActionCard";
 
 interface VisibilityScoreProps {
   result: AnalysisResult;
@@ -17,7 +18,7 @@ function TwoLayerScoreCard({
   title: string;
   subtitle: string;
   score: number;
-  breakdown?: SiteDiscoverabilityBreakdown | ProductExtractabilityBreakdown | null;
+  breakdown?: SiteDiscoverabilityBreakdown | ExtractabilityBreakdown | null;
   isProductPage?: boolean;
 }) {
   const getScoreColor = (s: number) => {
@@ -189,6 +190,43 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
               max={result.siteDiscoverabilityBreakdown.organizationSchema.max}
             />
           </div>
+          
+          {/* Action Cards for Issues */}
+          <div className="mt-4 space-y-3">
+            {!result.siteDiscoverabilityBreakdown.llmsTxt.present && result.generatedArtifacts?.llmsTxt && (
+              <ActionCard
+                title="Missing llms.txt"
+                severity="critical"
+                description="Add an llms.txt file to help LLMs understand your site. This is becoming the standard for AI discoverability."
+                actions={[
+                  { label: "Download llms.txt", type: "download", content: result.generatedArtifacts.llmsTxt.content },
+                  { label: "Learn more", type: "link", url: "https://llmstxt.org" }
+                ]}
+              />
+            )}
+            {!result.siteDiscoverabilityBreakdown.aiCrawlerAccess.allowsOAI && (
+              <ActionCard
+                title="AI Crawlers May Be Blocked"
+                severity="warning"
+                description="Your robots.txt may be blocking ChatGPT's shopping bot. Add an exception for OAI-SearchBot."
+                actions={[
+                  { label: "Copy robots.txt entry", type: "copy", content: "User-agent: OAI-SearchBot\nAllow: /\n\nUser-agent: GPTBot\nAllow: /\n\nUser-agent: ChatGPT-User\nAllow: /" },
+                  { label: "View your robots.txt", type: "link", url: `https://${result.domain}/robots.txt` }
+                ]}
+              />
+            )}
+            {!result.siteDiscoverabilityBreakdown.sitemap.present && (
+              <ActionCard
+                title="Missing Sitemap"
+                severity="warning"
+                description="Add a sitemap.xml to help search engines and LLMs discover your pages."
+                actions={[
+                  { label: "Learn about sitemaps", type: "link", url: "https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview" }
+                ]}
+              />
+            )}
+          </div>
+          
           <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
             <p className="text-xs text-amber-700 dark:text-amber-300">
               <strong>Can't Measure:</strong> External mentions, domain authority, and brand recognition significantly impact discoverability but require external data sources.
@@ -210,25 +248,18 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
           </h3>
           <div className="grid md:grid-cols-2 gap-3">
             <BreakdownItem
-              label="Product Identity"
-              status={result.productExtractabilityBreakdown.productSchema.points >= 10 ? "good" : result.productExtractabilityBreakdown.productSchema.points >= 5 ? "warning" : "poor"}
-              detail={result.productExtractabilityBreakdown.productSchema.present ? "Schema found" : result.productExtractabilityBreakdown.productSchema.hasName ? "Content extraction" : "Missing"}
-              points={result.productExtractabilityBreakdown.productSchema.points}
-              max={result.productExtractabilityBreakdown.productSchema.max}
-            />
-            <BreakdownItem
-              label="Identifiers"
-              status={result.productExtractabilityBreakdown.identifiers.count > 0 ? "good" : "poor"}
-              detail={result.productExtractabilityBreakdown.identifiers.count > 0 ? `${result.productExtractabilityBreakdown.identifiers.count} found` : "Missing GTIN/MPN/SKU"}
-              points={result.productExtractabilityBreakdown.identifiers.points}
-              max={result.productExtractabilityBreakdown.identifiers.max}
+              label="Identity"
+              status={result.productExtractabilityBreakdown.identity.totalPoints >= 15 ? "good" : result.productExtractabilityBreakdown.identity.totalPoints >= 10 ? "warning" : "poor"}
+              detail={result.productExtractabilityBreakdown.identity.productName.found ? `Name found via ${result.productExtractabilityBreakdown.identity.productName.source}` : "Missing product name"}
+              points={result.productExtractabilityBreakdown.identity.totalPoints}
+              max={result.productExtractabilityBreakdown.identity.maxPoints}
             />
             <BreakdownItem
               label="Pricing"
-              status={result.productExtractabilityBreakdown.pricing.found ? "good" : "poor"}
-              detail={result.productExtractabilityBreakdown.pricing.found ? `${result.productExtractabilityBreakdown.pricing.source}` : "Not detected"}
-              points={result.productExtractabilityBreakdown.pricing.points}
-              max={result.productExtractabilityBreakdown.pricing.max}
+              status={result.productExtractabilityBreakdown.pricing.totalPoints >= 12 ? "good" : result.productExtractabilityBreakdown.pricing.totalPoints >= 6 ? "warning" : "poor"}
+              detail={result.productExtractabilityBreakdown.pricing.price.found ? `${result.productExtractabilityBreakdown.pricing.price.source}` : "Not detected"}
+              points={result.productExtractabilityBreakdown.pricing.totalPoints}
+              max={result.productExtractabilityBreakdown.pricing.maxPoints}
             />
             <BreakdownItem
               label="Availability"
@@ -238,22 +269,22 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
               max={result.productExtractabilityBreakdown.availability.max}
             />
             <BreakdownItem
-              label="Ratings"
-              status={result.productExtractabilityBreakdown.aggregateRating.found ? "good" : "poor"}
-              detail={result.productExtractabilityBreakdown.aggregateRating.found ? `${result.productExtractabilityBreakdown.aggregateRating.rating}/5` : "Not found"}
-              points={result.productExtractabilityBreakdown.aggregateRating.points}
-              max={result.productExtractabilityBreakdown.aggregateRating.max}
+              label="Reviews"
+              status={result.productExtractabilityBreakdown.reviews.totalPoints >= 15 ? "good" : result.productExtractabilityBreakdown.reviews.totalPoints >= 8 ? "warning" : "poor"}
+              detail={result.productExtractabilityBreakdown.reviews.rating.found ? `${result.productExtractabilityBreakdown.reviews.rating.value}/5 (${result.productExtractabilityBreakdown.reviews.count.value} reviews)` : "No ratings found"}
+              points={result.productExtractabilityBreakdown.reviews.totalPoints}
+              max={result.productExtractabilityBreakdown.reviews.maxPoints}
             />
             <BreakdownItem
-              label="Reviews"
-              status={result.productExtractabilityBreakdown.reviewCount.found ? "good" : "poor"}
-              detail={result.productExtractabilityBreakdown.reviewCount.found ? `${result.productExtractabilityBreakdown.reviewCount.count} reviews` : "None found"}
-              points={result.productExtractabilityBreakdown.reviewCount.points}
-              max={result.productExtractabilityBreakdown.reviewCount.max}
+              label="Identifiers"
+              status={result.productExtractabilityBreakdown.identifiers.count > 0 ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.identifiers.count > 0 ? `${result.productExtractabilityBreakdown.identifiers.count} found (GTIN/MPN/SKU)` : "Missing GTIN/MPN/SKU"}
+              points={result.productExtractabilityBreakdown.identifiers.points}
+              max={result.productExtractabilityBreakdown.identifiers.max}
             />
             <BreakdownItem
               label="Images"
-              status={result.productExtractabilityBreakdown.images.count >= 2 ? "good" : result.productExtractabilityBreakdown.images.count >= 1 ? "warning" : "poor"}
+              status={result.productExtractabilityBreakdown.images.count >= 3 ? "good" : result.productExtractabilityBreakdown.images.count >= 1 ? "warning" : "poor"}
               detail={`${result.productExtractabilityBreakdown.images.count} images, ${result.productExtractabilityBreakdown.images.withAlt} with alt`}
               points={result.productExtractabilityBreakdown.images.points}
               max={result.productExtractabilityBreakdown.images.max}
@@ -265,7 +296,71 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
               points={result.productExtractabilityBreakdown.specifications.points}
               max={result.productExtractabilityBreakdown.specifications.max}
             />
+            <BreakdownItem
+              label="Schema Bonus"
+              status={result.productExtractabilityBreakdown.schemaBonus.points >= 8 ? "good" : result.productExtractabilityBreakdown.schemaBonus.points >= 5 ? "warning" : "poor"}
+              detail={result.productExtractabilityBreakdown.schemaBonus.isComplete ? "Complete schema" : result.productExtractabilityBreakdown.schemaBonus.hasProductSchema ? "Partial schema" : "No schema"}
+              points={result.productExtractabilityBreakdown.schemaBonus.points}
+              max={result.productExtractabilityBreakdown.schemaBonus.max}
+            />
           </div>
+          
+          {/* Action Cards for Product Issues */}
+          <div className="mt-4 space-y-3">
+            {!result.productExtractabilityBreakdown.schemaBonus.hasProductSchema && (
+              <ActionCard
+                title="Missing Product Schema"
+                severity="critical"
+                description="Add JSON-LD Product schema to help LLMs extract product information reliably."
+                actions={[
+                  { label: "Copy schema template", type: "copy", content: `{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Your Product Name",
+  "description": "Product description",
+  "image": "https://example.com/product-image.jpg",
+  "offers": {
+    "@type": "Offer",
+    "price": "99.99",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock"
+  },
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.5",
+    "reviewCount": "100"
+  }
+}` },
+                  { label: "Validate with Google", type: "link", url: "https://search.google.com/test/rich-results" }
+                ]}
+              />
+            )}
+            {result.productExtractabilityBreakdown.identifiers.count === 0 && (
+              <ActionCard
+                title="Missing Product Identifiers"
+                severity="warning"
+                description="GTIN, MPN, or SKU help LLMs match your product across platforms."
+                actions={[
+                  { label: "Learn about GTINs", type: "link", url: "https://www.gs1.org/standards/id-keys/gtin" }
+                ]}
+              />
+            )}
+            {!result.productExtractabilityBreakdown.reviews.rating.found && (
+              <ActionCard
+                title="No Ratings Detected"
+                severity="warning"
+                description="Add AggregateRating schema to show LLMs that customers trust your product."
+                actions={[
+                  { label: "Copy rating schema", type: "copy", content: `"aggregateRating": {
+  "@type": "AggregateRating",
+  "ratingValue": "4.5",
+  "reviewCount": "42"
+}` }
+                ]}
+              />
+            )}
+          </div>
+          
           <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
             <p className="text-xs text-amber-700 dark:text-amber-300">
               <strong>Can't Measure:</strong> Third-party reviews on Reddit, forums, and external sites significantly impact LLM recommendations but require external data sources.
@@ -291,22 +386,8 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
         </div>
       </div>
 
-      {/* Pages List */}
-      <div className="card-modern p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </span>
-          Pages Analyzed ({result.pages.length})
-        </h3>
-        <div className="space-y-2 max-h-80 overflow-y-auto">
-          {result.pages.map((page, index) => (
-            <PageCard key={index} page={page} />
-          ))}
-        </div>
-      </div>
+      {/* Pages List - Collapsible */}
+      <CollapsiblePagesList pages={result.pages} />
 
       {/* Generated Artifacts */}
       {result.generatedArtifacts?.llmsTxt && (
@@ -472,6 +553,59 @@ function PageCard({ page }: { page: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CollapsiblePagesList({ pages }: { pages: Array<{
+  url: string;
+  title?: string;
+  score: number;
+  pageType?: string;
+  scoreBreakdown?: {
+    pageContext?: {
+      detectedType?: string;
+      isApplicable?: boolean;
+      reason?: string | null;
+    };
+    extractability?: {
+      score?: number;
+      label?: string;
+    };
+  };
+  schemas: { hasProductSchema: boolean }; 
+  reviews?: { hasReviews: boolean }; 
+  author?: { hasAuthor: boolean }; 
+  freshness?: { status: string } 
+}> }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="card-modern p-6">
+      <button 
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between"
+      >
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <span className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">
+            <svg className={`w-4 h-4 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </span>
+          Pages Analyzed ({pages.length})
+        </h3>
+        <span className="text-sm text-zinc-500">
+          {expanded ? "Click to collapse" : "Click to expand"}
+        </span>
+      </button>
+      
+      {expanded && (
+        <div className="mt-4 space-y-2 max-h-80 overflow-y-auto">
+          {pages.map((page, index) => (
+            <PageCard key={index} page={page} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

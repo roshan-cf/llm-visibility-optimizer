@@ -93,132 +93,145 @@ export interface ContentExtraction {
 }
 
 // ============================================
-// PAGE SCORE BREAKDOWN (NEW MODEL)
+// UNIFIED EXTRACTABILITY SCORING (100 Points)
 // ============================================
 
-export interface PageScoreBreakdown {
-  /** Overall extractability score */
-  extractability: {
-    score: number;
-    max: number;
-    label: string; // "Excellent", "Good", "Fair", "Poor"
-  };
-  
-  /** Identity: Can LLM identify WHAT this product is? */
+export interface ExtractabilityBreakdown {
+  /** Identity: Can LLM identify WHAT this product is? (20 points) */
   identity: {
     productName: { 
       points: number; 
-      max: number; 
+      max: 10; 
       found: boolean;
       source: string | null;
     };
     description: { 
       points: number; 
-      max: number; 
+      max: 5; 
       found: boolean;
       length: number;
     };
     category: { 
       points: number; 
-      max: number; 
+      max: 5; 
       found: boolean;
       value: string | null;
     };
+    totalPoints: number;
+    maxPoints: 20;
   };
   
-  /** Pricing: Can LLM find price information? */
+  /** Pricing: Can LLM find price information? (15 points) */
   pricing: {
     price: { 
       points: number; 
-      max: number; 
+      max: 12; 
       found: boolean;
       value: number | null;
       currency: string | null;
+      source: string | null;
     };
     currency: { 
       points: number; 
-      max: number; 
+      max: 3; 
       found: boolean;
       symbol: string | null;
     };
+    totalPoints: number;
+    maxPoints: 15;
   };
   
-  /** Availability: Can LLM know if it's in stock? */
+  /** Availability: Can LLM know if it's in stock? (10 points) */
   availability: {
-    status: { 
-      points: number; 
-      max: number; 
-      found: boolean;
-      value: string | null;
-    };
+    points: number;
+    max: 10;
+    found: boolean;
+    status: "in_stock" | "out_of_stock" | "preorder" | "unknown";
+    source: string | null;
   };
   
-  /** Reviews: Can LLM find ratings/reviews? */
+  /** Reviews: Can LLM find ratings/reviews? (20 points) */
   reviews: {
-    hasReviews: { 
+    rating: { 
       points: number; 
-      max: number; 
-      found: boolean;
-    };
-    ratingValue: { 
-      points: number; 
-      max: number; 
+      max: 10; 
       found: boolean;
       value: number | null;
-    };
-    reviewCount: { 
-      points: number; 
-      max: number; 
-      found: boolean;
       count: number;
+      source: string | null;
     };
+    count: { 
+      points: number; 
+      max: 10; 
+      found: boolean;
+      value: number;
+    };
+    totalPoints: number;
+    maxPoints: 20;
   };
   
-  /** Specifications: Product details and specs */
+  /** Identifiers: GTIN/MPN/SKU for product matching (10 points) */
+  identifiers: {
+    points: number;
+    max: 10;
+    hasGTIN: boolean;
+    hasMPN: boolean;
+    hasSKU: boolean;
+    values: {
+      gtin: string | null;
+      mpn: string | null;
+      sku: string | null;
+    };
+    count: number;
+  };
+  
+  /** Images: Visual content (5 points) */
+  images: {
+    points: number;
+    max: 5;
+    count: number;
+    withAlt: number;
+    altRatio: number;
+  };
+  
+  /** Specifications: Product details (10 points) */
   specifications: {
-    specsPresent: { 
-      points: number; 
-      max: number; 
-      found: boolean;
-      count: number;
-    };
-    images: { 
-      points: number; 
-      max: number; 
-      count: number;
-    };
+    points: number;
+    max: 10;
+    found: boolean;
+    count: number;
+    source: "table" | "list" | "schema" | null;
   };
   
-  /** Trust: Brand and purchase path */
-  trust: {
-    brand: { 
-      points: number; 
-      max: number; 
-      found: boolean;
-      value: string | null;
-    };
-    purchasePath: { 
-      points: number; 
-      max: number; 
-      found: boolean;
-      buttons: string[];
-    };
-  };
-  
-  /** Schema Bonus: Extra points for using structured data */
+  /** Schema Bonus: Extra points for structured data (10 points) */
   schemaBonus: {
-    productSchema: { points: number; max: number; present: boolean };
-    aggregateRatingSchema: { points: number; max: number; present: boolean };
-    offerSchema: { points: number; max: number; present: boolean };
+    points: number;
+    max: 10;
+    hasProductSchema: boolean;
+    hasOfferSchema: boolean;
+    hasAggregateRatingSchema: boolean;
+    isComplete: boolean;
   };
   
-  /** Page type context */
+  /** Page context */
   pageContext: {
     detectedType: PageType;
-    isApplicable: boolean; // Is this a page type we can score?
+    isApplicable: boolean;
     reason: string | null;
   };
 }
+
+export interface ExtractabilityScore {
+  score: number;
+  max: 100;
+  label: "Excellent" | "Good" | "Fair" | "Poor" | "N/A";
+  breakdown: ExtractabilityBreakdown;
+}
+
+// Legacy type alias for compatibility
+export type PageScoreBreakdown = ExtractabilityBreakdown;
+export type ProductExtractabilityBreakdown = ExtractabilityBreakdown;
+export type ProductExtractabilityScore = ExtractabilityScore;
 
 // ============================================
 // AGGREGATE SCORE BREAKDOWN (NEW MODEL)
@@ -395,7 +408,11 @@ export interface SiteAnalysis {
   siteDiscoverabilityBreakdown: SiteDiscoverabilityBreakdown;
   
   productExtractabilityScore: number;
-  productExtractabilityBreakdown?: ProductExtractabilityBreakdown;
+  productExtractabilityBreakdown?: ExtractabilityBreakdown;
+  
+  /** NEW: LLM generation info */
+  llmGenerationUsed?: boolean;
+  llmGenerationWarning?: string;
   
   /** NEW: URL type analysis */
   analyzedUrlType: UrlType;
@@ -512,6 +529,7 @@ export interface GeneratedLlmsTxt {
   };
   warnings: string[];
   confidence: "high" | "medium" | "low";
+  generatedBy?: "llm" | "template";
 }
 
 export interface GeneratedSchema {
@@ -615,87 +633,4 @@ export interface SiteDiscoverabilityScore {
   max: number;
   label: string;
   breakdown: SiteDiscoverabilityBreakdown;
-}
-
-export interface ProductExtractabilityBreakdown {
-  productSchema: {
-    points: number;
-    max: number;
-    present: boolean;
-    hasName: boolean;
-    hasDescription: boolean;
-    hasImage: boolean;
-    hasOffers: boolean;
-    complete: boolean;
-  };
-  identifiers: {
-    points: number;
-    max: number;
-    hasGTIN: boolean;
-    hasMPN: boolean;
-    hasSKU: boolean;
-    values: {
-      gtin: string | null;
-      mpn: string | null;
-      sku: string | null;
-    };
-    count: number;
-  };
-  pricing: {
-    points: number;
-    max: number;
-    found: boolean;
-    source: "schema" | "text" | null;
-    value: number | null;
-    currency: string | null;
-    hasPriceRange: boolean;
-  };
-  availability: {
-    points: number;
-    max: number;
-    found: boolean;
-    status: "in_stock" | "out_of_stock" | "preorder" | "unknown";
-    source: "schema" | "text" | null;
-  };
-  aggregateRating: {
-    points: number;
-    max: number;
-    found: boolean;
-    rating: number | null;
-    maxRating: number;
-    source: "schema" | "text" | null;
-  };
-  reviewCount: {
-    points: number;
-    max: number;
-    found: boolean;
-    count: number;
-  };
-  images: {
-    points: number;
-    max: number;
-    count: number;
-    withAlt: number;
-    productImages: number;
-  };
-  specifications: {
-    points: number;
-    max: number;
-    found: boolean;
-    count: number;
-    source: "table" | "list" | "schema" | null;
-  };
-  thirdPartyReviews: {
-    measurable: false;
-    importance: "high";
-    weight: string;
-    recommendation: string;
-  };
-}
-
-export interface ProductExtractabilityScore {
-  score: number;
-  max: number;
-  label: string;
-  breakdown: ProductExtractabilityBreakdown;
 }

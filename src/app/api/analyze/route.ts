@@ -3,9 +3,8 @@ import * as cheerio from "cheerio";
 import fetch from "node-fetch";
 import https from "https";
 import { 
-  calculateProductExtractabilityScore,
+  calculateExtractabilityScore,
   calculateSiteDiscoverabilityScore,
-  calculatePageScore,
   generateLlmsTxt, 
   generateSchemaForPage,
   generateOrganizationSchema,
@@ -16,7 +15,8 @@ import {
   getComparisonContext,
   extractIdentifiers
 } from "@/lib/schema-generator";
-import { PageAnalysis, SiteAnalysis, UrlType } from "@/lib/types";
+import { checkOllamaAvailable, generateLlmsTxtWithLLM, parseLlmsTxtSections } from "@/lib/llm-generator";
+import { PageAnalysis, SiteAnalysis, UrlType, GeneratedLlmsTxt } from "@/lib/types";
 
 const FETCH_TIMEOUT = 15000;
 const DEFAULT_MAX_PAGES = 100;
@@ -357,7 +357,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const analysis = aggregateResults(pages, domain, robotsTxt, sitemapXml, llmsTxt, sitemapUrls);
+    const analysis = await aggregateResults(pages, domain, robotsTxt, sitemapXml, llmsTxt, sitemapUrls);
     
     // Add redirect info to the response if there was a redirect
     if (wasRedirected) {
@@ -729,13 +729,13 @@ function analyzePage($: cheerio.CheerioAPI, url: string, domain: string): PageAn
     contentExtraction,
   };
 
-  const { score, breakdown } = calculatePageScore(pageData as any);
+    const extractabilityResult = calculateExtractabilityScore(pageData as any);
 
-  return {
-    ...pageData,
-    score,
-    scoreBreakdown: breakdown,
-  };
+    return {
+      ...pageData,
+      score: extractabilityResult.score,
+      scoreBreakdown: extractabilityResult.breakdown,
+    };
 }
 
 function detectFreshness($: cheerio.CheerioAPI, jsonLdScripts: unknown[]): PageAnalysis["freshness"] {
@@ -985,14 +985,14 @@ function generateLLMDiscoveryPrompts(pages: PageAnalysis[], domain: string): Sit
   return categories;
 }
 
-function aggregateResults(
+async function aggregateResults(
   pages: PageAnalysis[],
   domain: string,
   robotsTxt: string | null,
   sitemapXml: string | null,
   llmsTxt: string | null,
   sitemapUrls: string[] = []
-): SiteAnalysis {
+): Promise<SiteAnalysis> {
   const totalPages = pages.length;
 
   const productPages = pages.filter(p => p.schemas.hasProductSchema).length;
@@ -1237,17 +1237,12 @@ function aggregateResults(
   let productExtractabilityBreakdown = undefined;
   
   if (productPageList.length > 0) {
-    const scores = productPageList.map(p => {
-      const result = calculateProductExtractabilityScore(p);
-      return result;
-    });
-    productExtractabilityScore = Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length);
-    productExtractabilityBreakdown = scores[0]?.breakdown;
+    productExtractabilityScore = Math.round(productPageList.reduce((sum, p) => sum + p.score, 0) / productPageList.length);
+    productExtractabilityBreakdown = productPageList[0]?.scoreBreakdown;
   } else {
     // Use first page as fallback
-    const firstPageScore = calculateProductExtractabilityScore(pages[0]);
-    productExtractabilityScore = firstPageScore.score;
-    productExtractabilityBreakdown = firstPageScore.breakdown;
+    productExtractabilityScore = pages[0]?.score || 0;
+    productExtractabilityBreakdown = pages[0]?.scoreBreakdown;
   }
   
   // Legacy aggregate score (average of two scores)
@@ -1270,7 +1265,55 @@ function aggregateResults(
     pageTypeBreakdown,
   };
 
-  const generatedLlmsTxt = generateLlmsTxt(siteData as any);
+  // Generate llms.txt with Ollama or fallback to template
+  let generatedLlmsTxt: GeneratedLlmsTxt;
+  let llmGenerationUsed = false;
+  let llmGenerationWarning: string | undefined;
+  
+  const ollamaAvailable = await checkOllamaAvailable();
+  
+  if (ollamaAvailable) {
+    const categories = Array.from(new Set(
+      pages
+        .filter(p => p.pageType === "product" || p.pageType === "collection")
+        .map(p => p.breadcrumbs?.[p.breadcrumbs.length - 1])
+        .filter(Boolean)
+    )) as string[];
+    
+    const keyPages = pages.slice(0, 5).map(p => ({
+      title: p.title || "",
+      url: p.url
+    }));
+    
+    const brandName = pages[0]?.h1Texts?.[0] || domain.split('.')[0];
+    
+    const llmResult = await generateLlmsTxtWithLLM({
+      domain,
+      homepageContent: `${pages[0]?.title || ""} ${pages[0]?.metaDescription || ""}`,
+      productCategories: categories,
+      brandName,
+      keyPages
+    });
+    
+    if (llmResult.usedLLM && llmResult.content) {
+      const sections = parseLlmsTxtSections(llmResult.content);
+      generatedLlmsTxt = {
+        content: llmResult.content,
+        sections,
+        warnings: [],
+        confidence: "high",
+        generatedBy: "llm"
+      };
+      llmGenerationUsed = true;
+    } else {
+      generatedLlmsTxt = generateLlmsTxt(siteData as any);
+      generatedLlmsTxt.warnings.push("LLM generation failed - using template mode");
+      llmGenerationWarning = llmResult.error;
+    }
+  } else {
+    generatedLlmsTxt = generateLlmsTxt(siteData as any);
+    generatedLlmsTxt.warnings.push("Ollama not running - install with: ollama run llama3.2 for best results");
+  }
   
   const organizationSchema = generateOrganizationSchema(siteData as any);
   
@@ -1304,6 +1347,8 @@ function aggregateResults(
     aggregateFactors,
     aggregateRecommendations,
     llmDiscoveryPrompts,
+    llmGenerationUsed,
+    llmGenerationWarning,
     generatedArtifacts: {
       llmsTxt: generatedLlmsTxt,
       homepageSchemas,

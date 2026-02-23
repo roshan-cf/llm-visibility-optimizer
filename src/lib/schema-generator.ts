@@ -21,13 +21,12 @@ import {
   SiteAnalysis, 
   GeneratedLlmsTxt, 
   GeneratedSchema,
-  PageScoreBreakdown,
   PageType,
   ContentExtraction,
   SiteDiscoverabilityScore,
   SiteDiscoverabilityBreakdown,
-  ProductExtractabilityScore,
-  ProductExtractabilityBreakdown
+  ExtractabilityScore,
+  ExtractabilityBreakdown
 } from "./types";
 
 // ============================================
@@ -551,52 +550,71 @@ export function extractAllContent(page: Partial<PageAnalysis>): ContentExtractio
  * - Trust (10): Brand and purchase path?
  * - Schema Bonus (+15): Extra for structured data
  */
-export function calculatePageScore(
+export function calculateExtractabilityScore(
   page: PageAnalysis
-): { score: number; breakdown: PageScoreBreakdown } {
+): ExtractabilityScore {
   
-  // Detect page type
   const pageType = page.pageType || detectPageType(page.url, page);
-  
-  // Extract content patterns
   const extraction = page.contentExtraction || extractAllContent(page);
+  const identifiers = extractIdentifiers(page.jsonLdScripts);
   
-  // Initialize breakdown
-  const breakdown: PageScoreBreakdown = {
-    extractability: {
-      score: 0,
-      max: 100,
-      label: "Poor"
-    },
+  const breakdown: ExtractabilityBreakdown = {
     identity: {
       productName: { points: 0, max: 10, found: false, source: null },
-      description: { points: 0, max: 10, found: false, length: 0 },
-      category: { points: 0, max: 5, found: false, value: null }
+      description: { points: 0, max: 5, found: false, length: 0 },
+      category: { points: 0, max: 5, found: false, value: null },
+      totalPoints: 0,
+      maxPoints: 20
     },
     pricing: {
-      price: { points: 0, max: 15, found: false, value: null, currency: null },
-      currency: { points: 0, max: 5, found: false, symbol: null }
+      price: { points: 0, max: 12, found: false, value: null, currency: null, source: null },
+      currency: { points: 0, max: 3, found: false, symbol: null },
+      totalPoints: 0,
+      maxPoints: 15
     },
     availability: {
-      status: { points: 0, max: 10, found: false, value: null }
+      points: 0,
+      max: 10,
+      found: false,
+      status: "unknown",
+      source: null
     },
     reviews: {
-      hasReviews: { points: 0, max: 8, found: false },
-      ratingValue: { points: 0, max: 6, found: false, value: null },
-      reviewCount: { points: 0, max: 6, found: false, count: 0 }
+      rating: { points: 0, max: 10, found: false, value: null, count: 0, source: null },
+      count: { points: 0, max: 10, found: false, value: 0 },
+      totalPoints: 0,
+      maxPoints: 20
+    },
+    identifiers: {
+      points: 0,
+      max: 10,
+      hasGTIN: false,
+      hasMPN: false,
+      hasSKU: false,
+      values: { gtin: null, mpn: null, sku: null },
+      count: 0
+    },
+    images: {
+      points: 0,
+      max: 5,
+      count: 0,
+      withAlt: 0,
+      altRatio: 0
     },
     specifications: {
-      specsPresent: { points: 0, max: 10, found: false, count: 0 },
-      images: { points: 0, max: 5, count: 0 }
-    },
-    trust: {
-      brand: { points: 0, max: 5, found: false, value: null },
-      purchasePath: { points: 0, max: 5, found: false, buttons: [] }
+      points: 0,
+      max: 10,
+      found: false,
+      count: 0,
+      source: null
     },
     schemaBonus: {
-      productSchema: { points: 0, max: 5, present: false },
-      aggregateRatingSchema: { points: 0, max: 5, present: false },
-      offerSchema: { points: 0, max: 5, present: false }
+      points: 0,
+      max: 10,
+      hasProductSchema: false,
+      hasOfferSchema: false,
+      hasAggregateRatingSchema: false,
+      isComplete: false
     },
     pageContext: {
       detectedType: pageType,
@@ -605,231 +623,252 @@ export function calculatePageScore(
     }
   };
   
-  // Skip scoring for non-product pages
   if (pageType !== "product" && pageType !== "collection") {
     breakdown.pageContext.reason = `Scoring only applies to product/collection pages. This is a ${pageType} page.`;
-    return { score: 0, breakdown };
+    return { score: 0, max: 100, label: "N/A", breakdown };
   }
   
   // ============================================
-  // IDENTITY SCORING (25 points)
+  // IDENTITY (20 points)
   // ============================================
   
-  // Product Name (10 points) - Schema OR H1 OR Title
+  // Product Name (10 points) - Schema (10) OR H1 (8) OR title (5)
   if (page.schemas.hasProductSchema && page.title) {
     breakdown.identity.productName.points = 10;
-    breakdown.identity.productName.found = true;
     breakdown.identity.productName.source = "schema";
-  } else if (extraction.productName.value) {
-    breakdown.identity.productName.points = 10;
-    breakdown.identity.productName.found = true;
+  } else if (extraction.productName?.source === "h1" && extraction.productName.value) {
+    breakdown.identity.productName.points = 8;
+    breakdown.identity.productName.source = "h1";
+  } else if (extraction.productName?.value) {
+    breakdown.identity.productName.points = 5;
     breakdown.identity.productName.source = extraction.productName.source || "content";
   }
+  breakdown.identity.productName.found = breakdown.identity.productName.points > 0;
   
-  // Description (10 points) - Schema OR Meta Description
+  // Description (5 points) - Meta desc >=120 (5) OR >=50 (3)
   const descLength = page.metaDescription?.length || 0;
-  if (page.schemas.hasProductSchema && descLength >= 50) {
-    breakdown.identity.description.points = 10;
-    breakdown.identity.description.found = true;
-  } else if (descLength >= 120) {
-    breakdown.identity.description.points = 10;
-    breakdown.identity.description.found = true;
-  } else if (descLength >= 50) {
+  breakdown.identity.description.length = descLength;
+  if (descLength >= 120) {
     breakdown.identity.description.points = 5;
     breakdown.identity.description.found = true;
+  } else if (descLength >= 50) {
+    breakdown.identity.description.points = 3;
+    breakdown.identity.description.found = true;
   }
-  breakdown.identity.description.length = descLength;
   
-  // Category (5 points) - Schema OR Breadcrumb OR URL
-  if (page.schemas.hasBreadcrumbSchema) {
+  // Category (5 points) - Schema breadcrumb (5) OR URL path (3)
+  if (page.schemas.hasBreadcrumbSchema && extraction.category?.value) {
     breakdown.identity.category.points = 5;
-    breakdown.identity.category.found = true;
-    breakdown.identity.category.value = extraction.category?.value || null;
-  } else if (extraction.category?.value) {
-    breakdown.identity.category.points = 5;
-    breakdown.identity.category.found = true;
     breakdown.identity.category.value = extraction.category.value;
+    breakdown.identity.category.found = true;
+  } else if (extraction.category?.value) {
+    breakdown.identity.category.points = 3;
+    breakdown.identity.category.value = extraction.category.value;
+    breakdown.identity.category.found = true;
   }
   
+  breakdown.identity.totalPoints = 
+    breakdown.identity.productName.points + 
+    breakdown.identity.description.points + 
+    breakdown.identity.category.points;
+  
   // ============================================
-  // PRICING SCORING (20 points)
+  // PRICING (15 points)
   // ============================================
   
-  // Price (15 points) - Schema OR Text Pattern
-  if (page.schemas.hasOfferSchema) {
-    breakdown.pricing.price.points = 15;
+  // Price (12 points) - Schema (12) OR text pattern (10)
+  if (page.schemas.hasOfferSchema && extraction.price?.value) {
+    breakdown.pricing.price.points = 12;
+    breakdown.pricing.price.source = "schema";
     breakdown.pricing.price.found = true;
-    breakdown.pricing.price.value = extraction.price?.value || null;
-    breakdown.pricing.price.currency = extraction.price?.currency || null;
   } else if (extraction.price?.value) {
-    breakdown.pricing.price.points = 15;
+    breakdown.pricing.price.points = 10;
+    breakdown.pricing.price.source = extraction.price.source || "text";
     breakdown.pricing.price.found = true;
-    breakdown.pricing.price.value = extraction.price.value;
-    breakdown.pricing.price.currency = extraction.price.currency;
   }
+  breakdown.pricing.price.value = extraction.price?.value || null;
+  breakdown.pricing.price.currency = extraction.price?.currency || null;
   
-  // Currency (5 points) - Schema OR Symbol Detection
+  // Currency (3 points) - Schema (3) OR symbol (2)
   if (extraction.price?.currency) {
-    breakdown.pricing.currency.points = 5;
-    breakdown.pricing.currency.found = true;
+    if (page.schemas.hasOfferSchema) {
+      breakdown.pricing.currency.points = 3;
+    } else {
+      breakdown.pricing.currency.points = 2;
+    }
     breakdown.pricing.currency.symbol = extraction.price.currency;
+    breakdown.pricing.currency.found = true;
   }
+  
+  breakdown.pricing.totalPoints = 
+    breakdown.pricing.price.points + 
+    breakdown.pricing.currency.points;
   
   // ============================================
-  // AVAILABILITY SCORING (10 points)
+  // AVAILABILITY (10 points)
   // ============================================
   
-  // Stock Status (10 points) - Schema OR Text Pattern
-  if (page.schemas.hasOfferSchema || extraction.availability?.status !== "unknown") {
-    breakdown.availability.status.points = 10;
-    breakdown.availability.status.found = true;
-    breakdown.availability.status.value = extraction.availability?.status || "in_stock";
-  }
-  
-  // ============================================
-  // REVIEWS SCORING (20 points)
-  // ============================================
-  
-  // Has Reviews (8 points) - Schema OR Review Section
-  if (page.schemas.hasAggregateRating || page.reviews?.hasReviews) {
-    breakdown.reviews.hasReviews.points = 8;
-    breakdown.reviews.hasReviews.found = true;
-  } else if (extraction.rating?.value && extraction.rating.value > 0) {
-    breakdown.reviews.hasReviews.points = 8;
-    breakdown.reviews.hasReviews.found = true;
-  }
-  
-  // Rating Value (6 points) - Schema OR Text Pattern
-  const ratingValue = page.reviews?.averageRating || extraction.rating?.value || null;
-  if (ratingValue !== null) {
-    breakdown.reviews.ratingValue.points = 6;
-    breakdown.reviews.ratingValue.found = true;
-    breakdown.reviews.ratingValue.value = ratingValue;
-  }
-  
-  // Review Count (6 points) - Schema OR Text Pattern
-  const reviewCount = page.reviews?.reviewCount || extraction.rating?.count || 0;
-  if (reviewCount > 0) {
-    breakdown.reviews.reviewCount.points = reviewCount >= 10 ? 6 : (reviewCount >= 5 ? 4 : 2);
-    breakdown.reviews.reviewCount.found = true;
-    breakdown.reviews.reviewCount.count = reviewCount;
-  }
-  
-  // ============================================
-  // SPECIFICATIONS SCORING (15 points)
-  // ============================================
-  
-  // Specs/Features (10 points) - Table/List Detection
-  if (extraction.specifications?.detected) {
-    breakdown.specifications.specsPresent.points = extraction.specifications.count >= 3 ? 10 : 5;
-    breakdown.specifications.specsPresent.found = true;
-    breakdown.specifications.specsPresent.count = extraction.specifications.count;
-  }
-  
-  // Images (5 points) - 2+ images = full, 1 = partial
-  const imageCount = extraction.images?.count || 0;
-  if (imageCount >= 2) {
-    breakdown.specifications.images.points = 5;
-  } else if (imageCount === 1) {
-    breakdown.specifications.images.points = 3;
-  }
-  breakdown.specifications.images.count = imageCount;
-  
-  // ============================================
-  // TRUST SCORING (10 points)
-  // ============================================
-  
-  // Brand (5 points) - Schema OR Text
-  if (page.schemas.hasProductSchema || extraction.brand?.value) {
-    breakdown.trust.brand.points = 5;
-    breakdown.trust.brand.found = true;
-    breakdown.trust.brand.value = extraction.brand?.value || null;
-  }
-  
-  // Purchase Path (5 points) - CTA Buttons Detected
-  if (extraction.purchaseCTA?.detected) {
-    breakdown.trust.purchasePath.points = 5;
-    breakdown.trust.purchasePath.found = true;
-    breakdown.trust.purchasePath.buttons = extraction.purchaseCTA.buttons;
-  }
-  
-  // ============================================
-  // SCHEMA BONUS (+15 points)
-  // ============================================
-  
-  // Product Schema Bonus
-  if (page.schemas.hasProductSchema) {
-    breakdown.schemaBonus.productSchema.points = 5;
-    breakdown.schemaBonus.productSchema.present = true;
-  }
-  
-  // AggregateRating Schema Bonus
-  if (page.schemas.hasAggregateRating) {
-    breakdown.schemaBonus.aggregateRatingSchema.points = 5;
-    breakdown.schemaBonus.aggregateRatingSchema.present = true;
-  }
-  
-  // Offer Schema Bonus
   if (page.schemas.hasOfferSchema) {
-    breakdown.schemaBonus.offerSchema.points = 5;
-    breakdown.schemaBonus.offerSchema.present = true;
+    breakdown.availability.points = 10;
+    breakdown.availability.found = true;
+    breakdown.availability.status = extraction.availability?.status || "in_stock";
+    breakdown.availability.source = "schema";
+  } else if (extraction.availability?.status && extraction.availability.status !== "unknown") {
+    breakdown.availability.points = 8;
+    breakdown.availability.found = true;
+    breakdown.availability.status = extraction.availability.status;
+    breakdown.availability.source = extraction.availability.source || "text";
+  } else if (extraction.purchaseCTA?.detected) {
+    breakdown.availability.points = 5;
+    breakdown.availability.found = true;
+    breakdown.availability.status = "in_stock";
+    breakdown.availability.source = "cta";
   }
   
   // ============================================
-  // CALCULATE TOTAL
+  // REVIEWS (20 points)
   // ============================================
   
-  let totalScore = 0;
+  const ratingValue = page.reviews?.averageRating || extraction.rating?.value || null;
+  const reviewCount = page.reviews?.reviewCount || extraction.rating?.count || 0;
   
-  // Identity
-  totalScore += breakdown.identity.productName.points;
-  totalScore += breakdown.identity.description.points;
-  totalScore += breakdown.identity.category.points;
-  
-  // Pricing
-  totalScore += breakdown.pricing.price.points;
-  totalScore += breakdown.pricing.currency.points;
-  
-  // Availability
-  totalScore += breakdown.availability.status.points;
-  
-  // Reviews
-  totalScore += breakdown.reviews.hasReviews.points;
-  totalScore += breakdown.reviews.ratingValue.points;
-  totalScore += breakdown.reviews.reviewCount.points;
-  
-  // Specifications
-  totalScore += breakdown.specifications.specsPresent.points;
-  totalScore += breakdown.specifications.images.points;
-  
-  // Trust
-  totalScore += breakdown.trust.brand.points;
-  totalScore += breakdown.trust.purchasePath.points;
-  
-  // Schema Bonus (can exceed 100, but capped)
-  totalScore += breakdown.schemaBonus.productSchema.points;
-  totalScore += breakdown.schemaBonus.aggregateRatingSchema.points;
-  totalScore += breakdown.schemaBonus.offerSchema.points;
-  
-  // Cap at 100
-  totalScore = Math.min(100, Math.max(0, totalScore));
-  
-  // Set label
-  if (totalScore >= 80) {
-    breakdown.extractability.label = "Excellent";
-  } else if (totalScore >= 60) {
-    breakdown.extractability.label = "Good";
-  } else if (totalScore >= 40) {
-    breakdown.extractability.label = "Fair";
-  } else if (totalScore >= 20) {
-    breakdown.extractability.label = "Poor";
-  } else {
-    breakdown.extractability.label = "Very Poor";
+  // Rating (10 points) - Schema (10) OR text pattern (8)
+  if (ratingValue !== null) {
+    breakdown.reviews.rating.found = true;
+    breakdown.reviews.rating.value = ratingValue;
+    breakdown.reviews.rating.count = reviewCount;
+    
+    if (page.schemas.hasAggregateRating) {
+      breakdown.reviews.rating.points = 10;
+      breakdown.reviews.rating.source = "schema";
+    } else {
+      breakdown.reviews.rating.points = 8;
+      breakdown.reviews.rating.source = extraction.rating?.source || "text";
+    }
   }
   
-  breakdown.extractability.score = totalScore;
+  // Review Count (10 points) - Based on count
+  if (reviewCount > 0) {
+    breakdown.reviews.count.found = true;
+    breakdown.reviews.count.value = reviewCount;
+    
+    if (reviewCount >= 100) {
+      breakdown.reviews.count.points = 10;
+    } else if (reviewCount >= 50) {
+      breakdown.reviews.count.points = 8;
+    } else if (reviewCount >= 10) {
+      breakdown.reviews.count.points = 6;
+    } else if (reviewCount >= 5) {
+      breakdown.reviews.count.points = 4;
+    } else {
+      breakdown.reviews.count.points = 2;
+    }
+  }
   
-  return { score: totalScore, breakdown };
+  breakdown.reviews.totalPoints = 
+    breakdown.reviews.rating.points + 
+    breakdown.reviews.count.points;
+  
+  // ============================================
+  // IDENTIFIERS (10 points)
+  // ============================================
+  
+  breakdown.identifiers.hasGTIN = !!identifiers.gtin;
+  breakdown.identifiers.hasMPN = !!identifiers.mpn;
+  breakdown.identifiers.hasSKU = !!identifiers.sku;
+  breakdown.identifiers.values = {
+    gtin: identifiers.gtin || null,
+    mpn: identifiers.mpn || null,
+    sku: identifiers.sku || null
+  };
+  breakdown.identifiers.count = [identifiers.gtin, identifiers.mpn, identifiers.sku].filter(Boolean).length;
+  
+  if (identifiers.gtin) {
+    breakdown.identifiers.points = 10; // GTIN is most valuable
+  } else if (identifiers.mpn) {
+    breakdown.identifiers.points = 7;
+  } else if (identifiers.sku) {
+    breakdown.identifiers.points = 5;
+  }
+  
+  // ============================================
+  // IMAGES (5 points)
+  // ============================================
+  
+  const imageCount = page.images?.total || extraction.images?.count || 0;
+  const withAlt = page.images?.withAlt || extraction.images?.hasAlt || 0;
+  const altRatio = imageCount > 0 ? withAlt / imageCount : 0;
+  
+  breakdown.images.count = imageCount;
+  breakdown.images.withAlt = withAlt;
+  breakdown.images.altRatio = altRatio;
+  
+  if (imageCount >= 3 && altRatio >= 0.8) {
+    breakdown.images.points = 5;
+  } else if (imageCount >= 2 && altRatio >= 0.5) {
+    breakdown.images.points = 4;
+  } else if (imageCount >= 1 && altRatio >= 0.5) {
+    breakdown.images.points = 3;
+  } else if (imageCount >= 1) {
+    breakdown.images.points = 2;
+  }
+  
+  // ============================================
+  // SPECIFICATIONS (10 points)
+  // ============================================
+  
+  if (extraction.specifications?.detected) {
+    breakdown.specifications.found = true;
+    breakdown.specifications.count = extraction.specifications.count;
+    breakdown.specifications.source = extraction.specifications.source;
+    
+    if (extraction.specifications.count >= 5) {
+      breakdown.specifications.points = 10;
+    } else if (extraction.specifications.count >= 3) {
+      breakdown.specifications.points = 7;
+    } else {
+      breakdown.specifications.points = 5;
+    }
+  }
+  
+  // ============================================
+  // SCHEMA BONUS (10 points)
+  // ============================================
+  
+  breakdown.schemaBonus.hasProductSchema = page.schemas.hasProductSchema;
+  breakdown.schemaBonus.hasOfferSchema = page.schemas.hasOfferSchema;
+  breakdown.schemaBonus.hasAggregateRatingSchema = page.schemas.hasAggregateRating;
+  
+  if (page.schemas.hasProductSchema && page.schemas.hasOfferSchema && page.schemas.hasAggregateRating) {
+    breakdown.schemaBonus.points = 10;
+    breakdown.schemaBonus.isComplete = true;
+  } else if (page.schemas.hasProductSchema && page.schemas.hasOfferSchema) {
+    breakdown.schemaBonus.points = 8;
+  } else if (page.schemas.hasProductSchema) {
+    breakdown.schemaBonus.points = 5;
+  }
+  
+  // ============================================
+  // CALCULATE TOTAL (Max 100)
+  // ============================================
+  
+  const totalScore = Math.min(100, 
+    breakdown.identity.totalPoints +
+    breakdown.pricing.totalPoints +
+    breakdown.availability.points +
+    breakdown.reviews.totalPoints +
+    breakdown.identifiers.points +
+    breakdown.images.points +
+    breakdown.specifications.points +
+    breakdown.schemaBonus.points
+  );
+  
+  const label = totalScore >= 80 ? "Excellent" : 
+                totalScore >= 60 ? "Good" : 
+                totalScore >= 40 ? "Fair" : 
+                "Poor";
+  
+  return { score: totalScore, max: 100, label, breakdown };
 }
 
 // ============================================
@@ -1826,200 +1865,4 @@ export function calculateSiteDiscoverabilityScore(params: {
 // PRODUCT EXTRACTABILITY SCORE
 // ============================================
 
-/**
- * Calculates Product Extractability Score
- * Question: Can LLMs understand your product and recommend it?
- */
-export function calculateProductExtractabilityScore(page: PageAnalysis): ProductExtractabilityScore {
-  const extraction = page.contentExtraction || extractAllContent(page);
-  const identifiers = extractIdentifiers(page.jsonLdScripts);
-  
-  const breakdown: ProductExtractabilityBreakdown = {
-    productSchema: {
-      points: 0,
-      max: 15,
-      present: false,
-      hasName: false,
-      hasDescription: false,
-      hasImage: false,
-      hasOffers: false,
-      complete: false,
-    },
-    identifiers: {
-      points: 0,
-      max: 15,
-      hasGTIN: false,
-      hasMPN: false,
-      hasSKU: false,
-      values: { gtin: null, mpn: null, sku: null },
-      count: 0,
-    },
-    pricing: {
-      points: 0,
-      max: 15,
-      found: false,
-      source: null,
-      value: null,
-      currency: null,
-      hasPriceRange: false,
-    },
-    availability: {
-      points: 0,
-      max: 10,
-      found: false,
-      status: "unknown",
-      source: null,
-    },
-    aggregateRating: {
-      points: 0,
-      max: 15,
-      found: false,
-      rating: null,
-      maxRating: 5,
-      source: null,
-    },
-    reviewCount: {
-      points: 0,
-      max: 10,
-      found: false,
-      count: 0,
-    },
-    images: {
-      points: 0,
-      max: 5,
-      count: 0,
-      withAlt: 0,
-      productImages: 0,
-    },
-    specifications: {
-      points: 0,
-      max: 10,
-      found: false,
-      count: 0,
-      source: null,
-    },
-    thirdPartyReviews: {
-      measurable: false,
-      importance: "high",
-      weight: "15%",
-      recommendation: "Get reviews on Reddit, independent review sites, and forums. External reviews are critical for LLM recommendations.",
-    },
-  };
-  
-  let totalScore = 0;
-  
-  // 1. Product Identity (15 points) - Schema OR Content
-  breakdown.productSchema.present = page.schemas.hasProductSchema;
-  breakdown.productSchema.hasName = !!extraction.productName?.value;
-  breakdown.productSchema.hasDescription = (page.metaDescription?.length || 0) >= 50;
-  breakdown.productSchema.hasImage = (extraction.images?.count || page.images?.total || 0) > 0;
-  breakdown.productSchema.hasOffers = page.schemas.hasOfferSchema || !!extraction.price?.value;
-  
-  let identityScore = 0;
-  if (page.schemas.hasProductSchema) {
-    identityScore = 15;
-    breakdown.productSchema.complete = breakdown.productSchema.hasName && breakdown.productSchema.hasOffers;
-  } else if (extraction.productName?.value) {
-    identityScore = 10;
-    if (extraction.category?.value) identityScore += 3;
-    if ((page.images?.total || 0) >= 2) identityScore += 2;
-  }
-  breakdown.productSchema.points = Math.min(15, identityScore);
-  totalScore += breakdown.productSchema.points;
-  
-  // 2. Identifiers (15 points)
-  breakdown.identifiers.hasGTIN = !!identifiers.gtin;
-  breakdown.identifiers.hasMPN = !!identifiers.mpn;
-  breakdown.identifiers.hasSKU = !!identifiers.sku;
-  breakdown.identifiers.values = {
-    gtin: identifiers.gtin,
-    mpn: identifiers.mpn,
-    sku: identifiers.sku,
-  };
-  breakdown.identifiers.count = [identifiers.gtin, identifiers.mpn, identifiers.sku].filter(Boolean).length;
-  
-  let identifierScore = 0;
-  if (identifiers.gtin) identifierScore += 8;
-  if (identifiers.mpn) identifierScore += 4;
-  if (identifiers.sku) identifierScore += 3;
-  breakdown.identifiers.points = Math.min(15, identifierScore);
-  totalScore += breakdown.identifiers.points;
-  
-  // 3. Pricing (15 points)
-  breakdown.pricing.found = !!extraction.price?.value;
-  breakdown.pricing.source = extraction.price?.source || null;
-  breakdown.pricing.value = extraction.price?.value || null;
-  breakdown.pricing.currency = extraction.price?.currency || null;
-  if (extraction.price?.value) {
-    breakdown.pricing.points = 15;
-    totalScore += 15;
-  }
-  
-  // 4. Availability (10 points)
-  breakdown.availability.found = extraction.availability?.status !== "unknown";
-  breakdown.availability.status = extraction.availability?.status || "unknown";
-  breakdown.availability.source = extraction.availability?.source || null;
-  if (extraction.availability?.status && extraction.availability.status !== "unknown") {
-    breakdown.availability.points = 10;
-    totalScore += 10;
-  }
-  
-  // 5. Aggregate Rating (15 points)
-  const ratingValue = page.reviews?.averageRating || extraction.rating?.value;
-  const ratingCount = page.reviews?.reviewCount || extraction.rating?.count || 0;
-  breakdown.aggregateRating.found = !!ratingValue;
-  breakdown.aggregateRating.rating = ratingValue || null;
-  breakdown.aggregateRating.source = page.reviews?.averageRating ? "schema" : extraction.rating?.source || null;
-  if (ratingValue) {
-    let ratingScore = 8;
-    if (ratingCount >= 50) ratingScore = 15;
-    else if (ratingCount >= 10) ratingScore = 12;
-    breakdown.aggregateRating.points = ratingScore;
-    totalScore += ratingScore;
-  }
-  
-  // 6. Review Count (10 points)
-  breakdown.reviewCount.found = ratingCount > 0;
-  breakdown.reviewCount.count = ratingCount;
-  if (ratingCount > 0) {
-    let countScore = 5;
-    if (ratingCount >= 100) countScore = 10;
-    else if (ratingCount >= 20) countScore = 7;
-    breakdown.reviewCount.points = countScore;
-    totalScore += countScore;
-  }
-  
-  // 7. Images (5 points)
-  const imageCount = extraction.images?.count || page.images?.total || 0;
-  const withAlt = extraction.images?.hasAlt || page.images?.withAlt || 0;
-  breakdown.images.count = imageCount;
-  breakdown.images.withAlt = withAlt;
-  if (imageCount >= 2) {
-    const altRatio = imageCount > 0 ? withAlt / imageCount : 0;
-    if (altRatio >= 0.8) {
-      breakdown.images.points = 5;
-      totalScore += 5;
-    } else if (altRatio >= 0.5) {
-      breakdown.images.points = 3;
-      totalScore += 3;
-    }
-  }
-  
-  // 8. Specifications (10 points)
-  breakdown.specifications.found = extraction.specifications?.detected || false;
-  breakdown.specifications.count = extraction.specifications?.count || 0;
-  breakdown.specifications.source = extraction.specifications?.source || null;
-  if (extraction.specifications?.detected) {
-    breakdown.specifications.points = extraction.specifications.count >= 3 ? 10 : 5;
-    totalScore += breakdown.specifications.points;
-  }
-  
-  const label = totalScore >= 80 ? "Excellent" : totalScore >= 60 ? "Good" : totalScore >= 40 ? "Fair" : "Poor";
-  
-  return {
-    score: Math.min(100, totalScore),
-    max: 100,
-    label,
-    breakdown,
-  };
-}
+
