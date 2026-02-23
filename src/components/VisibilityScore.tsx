@@ -16,6 +16,9 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
   const pagesWithFreshContent = result.pages.filter(p => p.freshness?.status === "fresh").length;
   const totalSnippets = result.pages.reduce((sum, p) => sum + (p.quoteReadySnippets?.length || 0), 0);
 
+  // Check if URL was redirected
+  const resolvedUrl = (result as any).resolvedUrl;
+
   const getScoreColor = (score: number) => {
     if (score >= 80) return "from-emerald-500 to-teal-500";
     if (score >= 60) return "from-blue-500 to-indigo-500";
@@ -34,6 +37,69 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
 
   return (
     <div className="space-y-6">
+      {/* URL Redirect Notice */}
+      {resolvedUrl && (
+        <div className="card-modern p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-blue-800 dark:text-blue-200">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Short URL Resolved
+          </h3>
+          <div className="grid md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-blue-600 dark:text-blue-400 text-xs font-medium">Original URL</span>
+              <div className="text-blue-700 dark:text-blue-300 text-xs truncate mt-1 font-mono bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded">
+                {resolvedUrl.original}
+              </div>
+              <span className="text-blue-500 dark:text-blue-500 text-xs">Domain: {resolvedUrl.originalDomain}</span>
+            </div>
+            <div>
+              <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">Final URL</span>
+              <div className="text-emerald-700 dark:text-emerald-300 text-xs truncate mt-1 font-mono bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1 rounded">
+                {resolvedUrl.final}
+              </div>
+              <span className="text-emerald-500 dark:text-emerald-500 text-xs">Domain: {resolvedUrl.finalDomain}</span>
+            </div>
+          </div>
+          <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+            ✓ Short URLs are automatically resolved to their final destination for accurate analysis.
+          </p>
+        </div>
+      )}
+
+      {/* Limitations Warning */}
+      <div className="card-modern p-6 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
+        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-amber-800 dark:text-amber-200">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          What This Score Means (And Doesn't Mean)
+        </h3>
+        <div className="grid md:grid-cols-2 gap-4 text-sm">
+          <div>
+            <h4 className="font-medium text-amber-700 dark:text-amber-300 mb-2">What We Measure ✓</h4>
+            <ul className="text-amber-600 dark:text-amber-400 space-y-1 text-xs">
+              <li>• Can LLMs extract your product information?</li>
+              <li>• Is your content structured for AI comprehension?</li>
+              <li>• Are you following technical best practices?</li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-medium text-amber-700 dark:text-amber-300 mb-2">What We CAN'T Measure ✗</h4>
+            <ul className="text-amber-600 dark:text-amber-400 space-y-1 text-xs">
+              <li>• Training data inclusion (is your site in ChatGPT's data?)</li>
+              <li>• Domain authority (how many sites link to you?)</li>
+              <li>• Brand recognition (do LLMs "know" your brand?)</li>
+              <li>• Citation density (how often cited across the web?)</li>
+            </ul>
+          </div>
+        </div>
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 italic">
+          Sites like Amazon may score low on technical factors but rank high in LLM results due to factors we cannot measure.
+        </p>
+      </div>
+
       {/* Main Score Card */}
       <div className="card-modern p-8">
         <div className="flex flex-col md:flex-row items-center gap-6">
@@ -43,7 +109,10 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
           <div className="flex-1 text-center md:text-left">
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-3">
               <span className={`badge ${scoreInfo.badge}`}>{scoreInfo.text}</span>
-              <span className="text-zinc-500 text-sm">LLM Visibility Score</span>
+              {result.comparisonContext && (
+                <span className="badge badge-info">{result.comparisonContext.label}</span>
+              )}
+              <span className="text-zinc-500 text-sm">LLM Readiness Score</span>
             </div>
             <p className="text-zinc-600 dark:text-zinc-400 text-sm">
               Analyzed {result.pagesAnalyzed} pages from <span className="font-medium text-zinc-900 dark:text-white">{result.domain}</span>
@@ -305,22 +374,70 @@ function RecommendationCard({ recommendation }: { recommendation: { title: strin
   );
 }
 
-function PageCard({ page }: { page: { url: string; title?: string; score: number; schemas: { hasProductSchema: boolean }; reviews?: { hasReviews: boolean }; author?: { hasAuthor: boolean }; freshness?: { status: string } } }) {
+function PageCard({ page }: { page: { 
+  url: string; 
+  title?: string; 
+  score: number; 
+  pageType?: string;
+  scoreBreakdown?: {
+    pageContext?: {
+      detectedType?: string;
+      isApplicable?: boolean;
+      reason?: string | null;
+    };
+    extractability?: {
+      score?: number;
+      label?: string;
+    };
+  };
+  schemas: { hasProductSchema: boolean }; 
+  reviews?: { hasReviews: boolean }; 
+  author?: { hasAuthor: boolean }; 
+  freshness?: { status: string } 
+} }) {
+  const pageType = page.pageType || page.scoreBreakdown?.pageContext?.detectedType || "unknown";
+  const isApplicable = page.scoreBreakdown?.pageContext?.isApplicable ?? true;
+  const reason = page.scoreBreakdown?.pageContext?.reason;
+  const extractabilityLabel = page.scoreBreakdown?.extractability?.label || "";
+  
+  const pageTypeColors: Record<string, string> = {
+    product: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+    collection: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    blog: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+    homepage: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
+    other: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400",
+  };
+
   return (
     <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
       <div className="flex justify-between items-start gap-3">
         <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${pageTypeColors[pageType] || pageTypeColors.other}`}>
+              {pageType}
+            </span>
+            {extractabilityLabel && isApplicable && (
+              <span className="text-xs text-zinc-400">{extractabilityLabel}</span>
+            )}
+          </div>
           <div className="text-sm font-medium truncate text-indigo-600 dark:text-indigo-400" title={page.url}>
             {page.url.replace(/^https?:\/\//, "")}
           </div>
           <div className="text-xs text-zinc-500 truncate">{page.title || "No title"}</div>
+          {reason && (
+            <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 italic">{reason}</div>
+          )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-sm font-bold">{page.score}</span>
-          {page.schemas.hasProductSchema && <span className="badge badge-success text-xs">Product</span>}
-          {page.reviews?.hasReviews && <span className="badge badge-info text-xs">Reviews</span>}
-          {page.author?.hasAuthor && <span className="badge badge-info text-xs">Author</span>}
-          {page.freshness?.status === "fresh" && <span className="badge badge-success text-xs">Fresh</span>}
+          {isApplicable ? (
+            <>
+              <span className="text-sm font-bold">{page.score}</span>
+              {page.schemas.hasProductSchema && <span className="badge badge-success text-xs">Product</span>}
+              {page.reviews?.hasReviews && <span className="badge badge-info text-xs">Reviews</span>}
+            </>
+          ) : (
+            <span className="text-xs text-zinc-400 italic">N/A</span>
+          )}
         </div>
       </div>
     </div>

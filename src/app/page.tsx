@@ -18,8 +18,17 @@ export default function Home() {
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("visibility");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
+    
+    if (!url || url.trim() === "") {
+      setError("Please enter a website URL");
+      return;
+    }
+    
+    console.log("Analyzing URL:", url);
     setLoading(true);
     setError(null);
     setResults(null);
@@ -28,10 +37,11 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, maxPages }),
+        body: JSON.stringify({ url: url.trim(), maxPages }),
       });
 
       const data = await response.json();
+      console.log("Analysis complete:", data.aggregateScore);
 
       if (!response.ok) {
         throw new Error(data.error || "Analysis failed");
@@ -39,9 +49,17 @@ export default function Home() {
 
       setResults(data);
     } catch (err) {
+      console.error("Analysis error:", err);
       setError(err instanceof Error ? err.message : "Failed to analyze website");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSubmit();
     }
   };
 
@@ -100,14 +118,16 @@ export default function Home() {
           <div className="card-modern p-6">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1">
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Enter website URL (e.g., https://example.com)"
-                  className="input-modern"
-                  required
-                />
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Enter website URL (e.g., https://example.com)"
+                className="input-modern"
+                required
+                disabled={loading}
+              />
               </div>
               <button
                 type="submit"

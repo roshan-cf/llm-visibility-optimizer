@@ -7,13 +7,17 @@ import {
   calculateAggregateScore, 
   generateLlmsTxt, 
   generateSchemaForPage,
-  generateOrganizationSchema 
+  generateOrganizationSchema,
+  detectPageType,
+  extractAllContent,
+  getComparisonContext
 } from "@/lib/schema-generator";
 import { PageAnalysis, SiteAnalysis } from "@/lib/types";
 
 const FETCH_TIMEOUT = 15000;
 const DEFAULT_MAX_PAGES = 100;
 const MAX_PAGES_HARD_LIMIT = 1000;
+const MAX_REDIRECTS = 10;
 
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false,
@@ -24,6 +28,12 @@ const fetchHeaders = {
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.5",
 };
+
+interface FetchResult {
+  content: string;
+  finalUrl: string;
+  redirectChain: string[];
+}
 
 async function fetchWithTimeout(url: string, options: Record<string, unknown> = {}): Promise<string> {
   const controller = new AbortController();
@@ -44,6 +54,122 @@ async function fetchWithTimeout(url: string, options: Record<string, unknown> = 
     return await response.text();
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Follows redirects and returns both content and final URL.
+ * Handles short URLs like amzn.in/d/xxx which redirect to full product pages.
+ */
+async function fetchWithRedirects(
+  url: string, 
+  options: Record<string, unknown> = {},
+  maxRedirects: number = MAX_REDIRECTS
+): Promise<FetchResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  const redirectChain: string[] = [url];
+  let currentUrl = url;
+  let redirects = 0;
+  
+  try {
+    while (redirects <= maxRedirects) {
+      const isHttps = currentUrl.startsWith("https");
+      
+      const response = await fetch(currentUrl, {
+        ...options,
+        signal: controller.signal,
+        agent: isHttps ? httpsAgent : undefined,
+        redirect: "manual", // Handle redirects manually to track chain
+      } as any);
+      
+      // Check for redirect status codes
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        if (!location) {
+          throw new Error(`Redirect ${response.status} without location header`);
+        }
+        
+        // Resolve relative URLs
+        const nextUrl = new URL(location, currentUrl).href;
+        redirectChain.push(nextUrl);
+        currentUrl = nextUrl;
+        redirects++;
+        continue;
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      // Success - return content and final URL
+      const content = await response.text();
+      clearTimeout(timeout);
+      
+      return {
+        content,
+        finalUrl: currentUrl,
+        redirectChain,
+      };
+    }
+    
+    throw new Error(`Too many redirects (>${maxRedirects})`);
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+/**
+ * Resolves a short URL to its final destination URL.
+ * Returns the final URL without fetching the full content.
+ * Uses GET request since many short URL services don't respond to HEAD.
+ */
+async function resolveShortUrl(url: string): Promise<{ finalUrl: string; redirectChain: string[] }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const redirectChain: string[] = [url];
+  let currentUrl = url;
+  let redirects = 0;
+  
+  try {
+    while (redirects <= MAX_REDIRECTS) {
+      const isHttps = currentUrl.startsWith("https");
+      
+      const response = await fetch(currentUrl, {
+        method: "GET", // Use GET - many short URL services ignore HEAD
+        signal: controller.signal,
+        agent: isHttps ? httpsAgent : undefined,
+        redirect: "manual",
+        headers: fetchHeaders,
+      } as any);
+      
+      // Check for redirect status codes
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        if (!location) break;
+        
+        const nextUrl = new URL(location, currentUrl).href;
+        redirectChain.push(nextUrl);
+        currentUrl = nextUrl;
+        redirects++;
+        
+        // Consume the body to avoid memory leaks
+        try { await response.text(); } catch {}
+        continue;
+      }
+      
+      // Success - consume body and return
+      try { await response.text(); } catch {}
+      break;
+    }
+    
+    clearTimeout(timeout);
+    return { finalUrl: currentUrl, redirectChain };
+  } catch (error) {
+    clearTimeout(timeout);
+    console.log(`resolveShortUrl error for ${url}:`, error);
+    return { finalUrl: url, redirectChain };
   }
 }
 
@@ -111,8 +237,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
-    const baseUrl = new URL(url);
+    // Resolve short URLs (e.g., amzn.in/d/xxx -> full Amazon product URL)
+    console.log(`Resolving URL: ${url}`);
+    let { finalUrl, redirectChain } = await resolveShortUrl(url);
+    let wasRedirected = finalUrl !== url;
+    
+    // Known short URL domains that often need GET-based redirect resolution
+    const shortUrlDomains = [
+      'amzn.in', 'amzn.to', 'amzn.eu', 'amazon.ae',
+      'bit.ly', 't.co', 'goo.gl', 'tinyurl.com', 'ow.ly',
+      'short.link', 'rb.gy', 'cutt.ly', 'bl.ink',
+    ];
+    
+    const originalDomain = new URL(url).hostname.toLowerCase();
+    const isShortUrl = shortUrlDomains.some(d => originalDomain === d || originalDomain.endsWith('.' + d));
+    
+    // If it looks like a short URL but wasn't resolved, try fetching with redirects
+    if (isShortUrl && !wasRedirected) {
+      console.log(`Detected potential short URL, trying full fetch with redirects...`);
+      try {
+        const result = await fetchWithRedirects(url, { headers: fetchHeaders });
+        if (result.finalUrl !== url) {
+          finalUrl = result.finalUrl;
+          redirectChain = result.redirectChain;
+          wasRedirected = true;
+        }
+      } catch (e) {
+        console.log(`Full redirect fetch failed:`, e);
+      }
+    }
+    
+    if (wasRedirected) {
+      console.log(`Redirect: ${url} -> ${finalUrl}`);
+      console.log(`Chain: ${redirectChain.join(' -> ')}`);
+    }
+
+    const baseUrl = new URL(finalUrl);
     const domain = baseUrl.hostname;
+    const finalDomain = domain;
 
     let robotsTxt: string | null = null;
     try {
@@ -139,7 +301,12 @@ export async function POST(request: NextRequest) {
       llmsTxt = await fetchWithTimeout(`${baseUrl.origin}/llms.txt`);
     } catch {}
 
-    const pageUrls = await discoverPages(baseUrl.href, sitemapContents, robotsTxt, pageLimit);
+    let pageUrls = await discoverPages(baseUrl.href, sitemapContents, robotsTxt, pageLimit);
+    
+    // Ensure the final URL (after redirect) is included in pages to analyze
+    if (!pageUrls.includes(finalUrl)) {
+      pageUrls = [finalUrl, ...pageUrls];
+    }
 
     const pages: PageAnalysis[] = [];
     const seenUrls = new Set<string>();
@@ -149,9 +316,11 @@ export async function POST(request: NextRequest) {
       seenUrls.add(pageUrl);
 
       try {
-        const html = await fetchWithTimeout(pageUrl, { headers: fetchHeaders });
+        // Use fetchWithRedirects to handle short URLs for each page
+        const { content: html, finalUrl: resolvedUrl } = await fetchWithRedirects(pageUrl, { headers: fetchHeaders });
+        seenUrls.add(resolvedUrl); // Track resolved URL to avoid duplicates
         const $ = cheerio.load(html);
-        const analysis = analyzePage($, pageUrl, domain);
+        const analysis = analyzePage($, resolvedUrl, domain);
         pages.push(analysis);
       } catch (e) {
         console.error(`Failed to analyze ${pageUrl}:`, e);
@@ -159,6 +328,19 @@ export async function POST(request: NextRequest) {
     }
 
     const analysis = aggregateResults(pages, domain, robotsTxt, sitemapXml, llmsTxt, sitemapUrls);
+    
+    // Add redirect info to the response if there was a redirect
+    if (wasRedirected) {
+      (analysis as any).resolvedUrl = {
+        original: url,
+        final: finalUrl,
+        originalDomain,
+        finalDomain: domain,
+        chain: redirectChain,
+      };
+      // Update mainUrl to show final URL
+      analysis.mainUrl = finalUrl;
+    }
 
     return NextResponse.json(analysis);
   } catch (error) {
@@ -280,15 +462,37 @@ function analyzePage($: cheerio.CheerioAPI, url: string, domain: string): PageAn
   const wordCount = bodyText.split(/\s+/).filter(w => w.length > 0).length;
 
   const links: string[] = [];
+  let internalLinks = 0;
+  let externalLinks = 0;
   $("a[href]").each((_, el) => {
     const href = $(el).attr("href") || "";
     try {
       const linkUrl = new URL(href, url);
       if (linkUrl.hostname === domain) {
         links.push(linkUrl.href);
+        internalLinks++;
+      } else {
+        externalLinks++;
       }
     } catch {}
   });
+
+  // Extract breadcrumbs
+  const breadcrumbs: string[] = [];
+  $("nav[aria-label*='breadcrumb'], .breadcrumb, [itemtype*='BreadcrumbList']").find("a").each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) breadcrumbs.push(text);
+  });
+  if (breadcrumbs.length === 0) {
+    // Fallback: extract from URL path
+    const urlPath = new URL(url).pathname;
+    const segments = urlPath.split("/").filter(s => s.length > 0);
+    segments.forEach(seg => {
+      if (!seg.match(/^[0-9]+$/) && seg.length > 2) {
+        breadcrumbs.push(seg.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
+      }
+    });
+  }
 
   const freshness = detectFreshness($, jsonLdScripts);
 
@@ -317,6 +521,10 @@ function analyzePage($: cheerio.CheerioAPI, url: string, domain: string): PageAn
 
   const hasAggregateRating = jsonLdScripts.some(
     (schema: any) => schema["aggregateRating"] || schema["@type"] === "AggregateRating"
+  );
+
+  const hasOfferSchema = jsonLdScripts.some(
+    (schema: any) => schema["offers"] || schema["@type"] === "Offer"
   );
 
   let reviewCount = 0;
@@ -362,6 +570,51 @@ function analyzePage($: cheerio.CheerioAPI, url: string, domain: string): PageAn
 
   const quoteReadySnippets = extractQuoteReadySnippets(bodyText);
 
+  // Detect page type (using partial data)
+  const pageType = detectPageType(url, {
+    schemas: {
+      hasProductSchema,
+      hasOrganizationSchema,
+      hasFAQSchema,
+      hasBreadcrumbSchema,
+      hasReviewSchema,
+      hasAggregateRating,
+      hasArticleSchema,
+      hasAuthorSchema,
+      hasOfferSchema,
+    },
+  } as Partial<PageAnalysis>);
+
+  // Extract content patterns for scoring
+  const contentExtraction = extractAllContent({
+    url,
+    title,
+    metaDescription,
+    h1Texts,
+    images: { total: images, withAlt: imagesWithAlt, withoutAlt: images - imagesWithAlt },
+    semanticElements,
+    schemas: {
+      hasProductSchema,
+      hasOrganizationSchema,
+      hasFAQSchema,
+      hasBreadcrumbSchema,
+      hasReviewSchema,
+      hasAggregateRating,
+      hasArticleSchema,
+      hasAuthorSchema,
+      hasOfferSchema,
+    },
+    reviews: {
+      hasReviews,
+      reviewCount,
+      averageRating,
+      ratingCount,
+    },
+    breadcrumbs,
+    openGraph,
+    freshness,
+  } as Partial<PageAnalysis>);
+
   const pageData = {
     url,
     title,
@@ -382,6 +635,7 @@ function analyzePage($: cheerio.CheerioAPI, url: string, domain: string): PageAn
       hasAggregateRating,
       hasArticleSchema,
       hasAuthorSchema,
+      hasOfferSchema,
     },
     reviews: {
       hasReviews,
@@ -393,6 +647,11 @@ function analyzePage($: cheerio.CheerioAPI, url: string, domain: string): PageAn
     freshness,
     author,
     links: [...new Set(links)].slice(0, 50),
+    internalLinks,
+    externalLinks,
+    pageType,
+    breadcrumbs,
+    contentExtraction,
   };
 
   const { score, breakdown } = calculatePageScore(pageData as any);
@@ -667,8 +926,18 @@ function aggregateResults(
   const breadcrumbPages = pages.filter(p => p.schemas.hasBreadcrumbSchema).length;
   const reviewPages = pages.filter(p => p.reviews.hasReviews).length;
   const aggregateRatingPages = pages.filter(p => p.schemas.hasAggregateRating).length;
+  const offerPages = pages.filter(p => p.schemas.hasOfferSchema).length;
   const pagesWithSchema = pages.filter(p => p.jsonLdScripts.length > 0).length;
   const pagesWithoutSchema = totalPages - pagesWithSchema;
+
+  // Page type breakdown
+  const pageTypeBreakdown = {
+    product: pages.filter(p => p.pageType === "product").length,
+    collection: pages.filter(p => p.pageType === "collection").length,
+    blog: pages.filter(p => p.pageType === "blog").length,
+    homepage: pages.filter(p => p.pageType === "homepage").length,
+    other: pages.filter(p => p.pageType === "other" || !p.pageType).length,
+  };
 
   const schemaCoverage = {
     productPages,
@@ -677,6 +946,7 @@ function aggregateResults(
     breadcrumbPages,
     reviewPages,
     aggregateRatingPages,
+    offerPages,
     pagesWithSchema,
     pagesWithoutSchema,
   };
@@ -846,6 +1116,7 @@ function aggregateResults(
     totalPages,
     pages,
     schemaCoverage,
+    pageTypeBreakdown,
   };
 
   const { score: aggregateScore, breakdown: aggregateScoreBreakdown } = calculateAggregateScore(siteData as any);
@@ -861,6 +1132,9 @@ function aggregateResults(
     .slice(0, 5)
     .flatMap(p => generateSchemaForPage(p));
 
+  // Get comparison context
+  const comparisonContext = getComparisonContext(aggregateScore);
+
   return {
     ...siteData,
     aggregateScore,
@@ -874,5 +1148,13 @@ function aggregateResults(
       productSchemas,
       organizationSchema,
     },
+    limitations: {
+      trainingDataInclusion: false,
+      domainAuthority: false,
+      brandRecognition: false,
+      citationDensity: false,
+      userBehavior: false,
+    },
+    comparisonContext,
   };
 }

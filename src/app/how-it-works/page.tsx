@@ -46,83 +46,104 @@ export default function HowItWorks() {
 
           <div className="bg-white dark:bg-gray-800/50 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700">
             <p className="text-gray-600 dark:text-gray-400 mb-8 text-lg">
-              Our visibility score (0-100) is calculated using a weighted algorithm that prioritizes factors most influential to LLM understanding and citation.
+              Our <strong>Content Extractability Score</strong> (0-100) measures whether LLMs can understand your product information. We use <strong>OR logic</strong> throughout — schema markup is preferred, but content extraction works too.
+            </p>
+
+            <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-6 mb-8 border border-amber-200 dark:border-amber-800">
+              <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3">Key Insight: Schema vs. Content</h4>
+              <p className="text-amber-700 dark:text-amber-300 text-sm mb-2">
+                Sites like Amazon have minimal schema markup but score well because their content is highly extractable — prices, ratings, and availability are visible in text patterns LLMs can parse.
+              </p>
+              <p className="text-amber-600 dark:text-amber-400 text-sm">
+                We score based on <strong>information presence</strong>, not just schema presence.
+              </p>
+            </div>
+
+            <h3 className="text-xl font-semibold mb-4">Page-Level Scoring (Product Pages Only)</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
+              Only product and collection pages receive scores. Homepages, blogs, and utility pages are marked N/A since they serve different purposes.
             </p>
 
             <div className="space-y-6">
               <ScoreFactor 
-                title="Structured Data (JSON-LD)" 
+                title="Identity (25 points)" 
                 weight={25}
                 impact="Critical"
-                calculation="Base: 0 points. +15pts if any schema present. +10pts if Product schema. +5pts if Organization schema."
-                why="LLMs use schema.org markup as the primary source of structured entity information. A product schema tells the AI exactly what your product is, its price, and availability—eliminating ambiguity."
+                calculation="Product Name: 10pts (schema OR h1 OR title). Description: 10pts (schema OR meta desc). Category: 5pts (schema OR breadcrumb OR URL)."
+                why="Can an LLM identify WHAT this product is? This is the foundation of visibility."
               />
               
               <ScoreFactor 
-                title="Review & Rating Schema" 
-                weight={15}
+                title="Pricing (20 points)" 
+                weight={20}
+                impact="Critical"
+                calculation="Price: 15pts (schema OR $₹€£ pattern). Currency: 5pts (schema OR symbol detection)."
+                why="Price information is essential for shopping queries. LLMs need to know the cost."
+              />
+
+              <ScoreFactor 
+                title="Availability (10 points)" 
+                weight={10}
                 impact="High"
-                calculation="Base: 0 points. +10pts if Review or AggregateRating schema detected. +5pts if both present."
-                why="Reviews provide social proof that LLMs reference when making recommendations. An AI is more likely to recommend a 4.5-star product with 500 reviews than one without ratings."
+                calculation="Stock Status: 10pts (schema OR 'In Stock' text OR 'Add to Cart' button)."
+                why="LLMs won't recommend products that are out of stock. Availability must be clear."
               />
 
               <ScoreFactor 
-                title="Content Freshness" 
-                weight={15}
+                title="Reviews (20 points)" 
+                weight={20}
                 impact="High"
-                calculation="Score based on days since last update: ≤30 days: 100pts, ≤90 days: 80pts, ≤180 days: 60pts, >180 days: 30pts"
-                why="LLMs prioritize current information. Content freshness signals that your data is accurate and up-to-date, increasing citation likelihood."
+                calculation="Has Reviews: 8pts. Rating Value: 6pts (schema OR ★★★★☆ pattern). Review Count: 6pts (schema OR '123 reviews' text)."
+                why="Social proof is critical. LLMs prefer products with ratings and reviews."
               />
 
               <ScoreFactor 
-                title="Quote-Ready Snippets" 
+                title="Specifications (15 points)" 
+                weight={15}
+                impact="Medium"
+                calculation="Specs/Features: 10pts (table/list detected). Images: 5pts (2+ images = full, 1 = partial)."
+                why="Detailed specs help LLMs answer comparison questions like 'Which laptop has 16GB RAM?'"
+              />
+
+              <ScoreFactor 
+                title="Trust (10 points)" 
                 weight={10}
                 impact="Medium"
-                calculation="0-5 snippets: 0-50pts. Each self-contained, factual sentence (10-35 words) adds points."
-                why="LLMs quote directly from sources. Short, declarative sentences like 'Our moisturizer contains 95% organic ingredients' are more likely to be cited verbatim."
+                calculation="Brand: 5pts (schema OR text). Purchase Path: 5pts ('Add to Cart' / 'Buy Now' detected)."
+                why="Trust signals help LLMs assess legitimacy. Clear purchase CTAs indicate a real product."
               />
 
               <ScoreFactor 
-                title="Meta Descriptions" 
-                weight={10}
-                impact="Medium"
-                calculation="0pts if missing. 50pts if present but <120 chars. 100pts if 120-160 chars."
-                why="Meta descriptions are often used as the 'answer snippet' when LLMs summarize your page. They're the elevator pitch for your content."
-              />
-
-              <ScoreFactor 
-                title="Author/Expertise Signals" 
-                weight={10}
-                impact="Medium"
-                calculation="0pts if no author. +5pts if author name present. +5pts if credentials/bio available."
-                why="E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) signals help LLMs assess content credibility and are more likely to cite expert sources."
-              />
-
-              <ScoreFactor 
-                title="Heading Structure" 
-                weight={5}
-                impact="Low"
-                calculation="0pts if no H1. 50pts if multiple H1s. 100pts if exactly one H1 with proper H2-H6 hierarchy."
-                why="Proper heading hierarchy helps LLMs understand content organization and extract key topics."
-              />
-
-              <ScoreFactor 
-                title="Technical SEO (robots.txt, sitemap)" 
-                weight={5}
-                impact="Low"
-                calculation="Binary: 100pts if present, 0pts if missing."
-                why="These files help crawlers discover your content. Without them, AI crawlers may miss entire sections of your site."
+                title="Schema Bonus (+15 points)" 
+                weight={15}
+                impact="Bonus"
+                calculation="Product Schema: +5pts. AggregateRating Schema: +5pts. Offer Schema: +5pts."
+                why="Schema is faster and more reliable for LLMs. You get bonus points for using structured data."
               />
             </div>
 
-            <div className="mt-10 p-6 bg-slate-50 dark:bg-slate-900/50 rounded-2xl">
-              <h3 className="text-lg font-semibold mb-4">Final Score Calculation</h3>
-              <code className="text-sm bg-slate-100 dark:bg-slate-800 p-4 rounded-lg block overflow-x-auto">
-                Final Score = (Factor_1 × Weight_1) + (Factor_2 × Weight_2) + ... + (Factor_n × Weight_n)
-              </code>
-              <p className="text-gray-600 dark:text-gray-400 mt-4 text-sm">
-                The weighted average produces a score where perfect structured data with fresh content and author attribution yields ~90-100, while a basic page with no schema yields ~40-50.
-              </p>
+            <h3 className="text-xl font-semibold mt-10 mb-4">Site-Level Scoring</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="text-sm font-medium mb-2">Product Extractability</div>
+                <div className="text-2xl font-bold text-indigo-600">35%</div>
+                <div className="text-xs text-gray-500">Average of product page scores</div>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="text-sm font-medium mb-2">Schema Bonus</div>
+                <div className="text-2xl font-bold text-indigo-600">15%</div>
+                <div className="text-xs text-gray-500">% of pages with schema</div>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="text-sm font-medium mb-2">llms.txt</div>
+                <div className="text-2xl font-bold text-indigo-600">10%</div>
+                <div className="text-xs text-gray-500">Binary: present or not</div>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <div className="text-sm font-medium mb-2">Other Factors</div>
+                <div className="text-2xl font-bold text-indigo-600">40%</div>
+                <div className="text-xs text-gray-500">Linking, coverage, freshness, etc.</div>
+              </div>
             </div>
           </div>
         </section>
@@ -211,51 +232,85 @@ export default function HowItWorks() {
 
         <section className="mb-20">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white text-xl font-bold">🎯</div>
-            <h2 className="text-3xl font-bold">AI Traffic Estimation</h2>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white text-xl font-bold">⚠</div>
+            <h2 className="text-3xl font-bold">Important Limitations</h2>
           </div>
 
           <div className="bg-white dark:bg-gray-800/50 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700">
-            <p className="text-gray-600 dark:text-gray-400 mb-8 text-lg">
-              The AI traffic estimate projects potential monthly visitors from LLM-generated referrals (ChatGPT, Claude, Gemini, Perplexity).
-            </p>
+            <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-6 mb-6 border border-amber-200 dark:border-amber-800">
+              <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3">Why Amazon Scores Low But Ranks High</h4>
+              <p className="text-amber-700 dark:text-amber-300 text-sm mb-3">
+                Amazon.in scores ~10/100 on our technical metrics but dominates LLM results. This is because:
+              </p>
+              <ul className="text-amber-600 dark:text-amber-400 text-sm space-y-1">
+                <li>• <strong>Training Data:</strong> Amazon is in ChatGPT's training data — millions of product pages were crawled</li>
+                <li>• <strong>Domain Authority:</strong> One of the most linked-to sites globally</li>
+                <li>• <strong>Brand Recognition:</strong> "Amazon" is a known entity LLMs recognize instantly</li>
+                <li>• <strong>Citation Density:</strong> Cited everywhere (reviews, news, blogs, forums)</li>
+              </ul>
+            </div>
 
+            <h3 className="text-xl font-semibold mb-4">What We CAN'T Measure</h3>
+            <div className="grid md:grid-cols-2 gap-4 mb-6">
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">Training Data Inclusion</h4>
+                <p className="text-red-600 dark:text-red-400 text-sm">
+                  Has your site been crawled for LLM training? Only the LLM providers know. Sites in training data have a massive advantage.
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">Domain Authority</h4>
+                <p className="text-red-600 dark:text-red-400 text-sm">
+                  How many sites link to you? Requires external data from Ahrefs, Moz, etc. Established brands have inherent advantage.
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">Brand Recognition</h4>
+                <p className="text-red-600 dark:text-red-400 text-sm">
+                  Is your brand a "known entity" to LLMs? Nike, Amazon, Apple = instant recognition. New brands start at zero.
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">Citation Density</h4>
+                <p className="text-red-600 dark:text-red-400 text-sm">
+                  How often is your content cited across the web? Wikipedia mentions, blog references, Reddit discussions drive LLM recommendations.
+                </p>
+              </div>
+            </div>
+
+            <h3 className="text-xl font-semibold mb-4">Tradeoffs We Made</h3>
             <div className="space-y-4">
-              <div className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
-                <h4 className="font-semibold mb-2">Formula</h4>
-                <code className="text-sm">Estimated Traffic = (AvgScore/100) × Multiplier × totalPages × BaseVisits</code>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <h4 className="font-medium mb-2">1. Schema vs. Content Detection</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Tradeoff:</strong> We detect both, but schema gets bonus points.<br/>
+                  <strong>Reason:</strong> Schema is faster/more reliable for LLMs, but content extraction works.<br/>
+                  <strong>Impact:</strong> Sites with good content but no schema score decent; sites with schema score better.
+                </p>
               </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="p-5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Multipliers Applied</h4>
-                  <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                    <li>• Schema coverage bonus: up to +50%</li>
-                    <li>• Product schema: +30%</li>
-                    <li>• Content depth (&gt;500 words): +20%</li>
-                    <li>• llms.txt present: +15%</li>
-                  </ul>
-                </div>
-
-                <div className="p-5 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-800">
-                  <h4 className="font-semibold text-violet-800 dark:text-violet-200 mb-2">Platform Distribution</h4>
-                  <ul className="text-sm text-violet-700 dark:text-violet-300 space-y-1">
-                    <li>• ChatGPT: 45%</li>
-                    <li>• Gemini: 20%</li>
-                    <li>• Claude: 15%</li>
-                    <li>• Perplexity: 12%</li>
-                    <li>• Other: 8%</li>
-                  </ul>
-                </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <h4 className="font-medium mb-2">2. Page-Level vs. Site-Level</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Tradeoff:</strong> Separate scores for pages and overall site.<br/>
+                  <strong>Reason:</strong> Product pages need different scoring than homepage/collections.<br/>
+                  <strong>Impact:</strong> More complex but more accurate.
+                </p>
               </div>
-
-              <div className="p-5 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
-                <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-2">Confidence Levels</h4>
-                <ul className="text-sm text-amber-700 dark:text-amber-300">
-                  <li><strong>High:</strong> ≥50 pages analyzed, ≥50% schema coverage</li>
-                  <li><strong>Medium:</strong> ≥20 pages analyzed</li>
-                  <li><strong>Low:</strong> &lt;20 pages analyzed</li>
-                </ul>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <h4 className="font-medium mb-2">3. Industry-Specific vs. Generic</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Tradeoff:</strong> Optimized for e-commerce, may not suit other industries.<br/>
+                  <strong>Reason:</strong> Our target users are e-commerce sites.<br/>
+                  <strong>Impact:</strong> Won't work well for blogs, SaaS, service businesses.
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
+                <h4 className="font-medium mb-2">4. What We Show vs. Hide</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Tradeoff:</strong> We show limitations prominently.<br/>
+                  <strong>Reason:</strong> Honesty &gt; false promises.<br/>
+                  <strong>Impact:</strong> Users understand the gap between score and reality.
+                </p>
               </div>
             </div>
           </div>
@@ -344,10 +399,11 @@ function ScoreFactor({
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-semibold text-lg">{title}</h3>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full">{weight}% weight</span>
+          <span className="text-xs font-medium px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full">{weight}pts max</span>
           <span className={`text-xs font-medium px-2 py-1 rounded-full ${
             impact === "Critical" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" :
             impact === "High" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300" :
+            impact === "Bonus" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300" :
             "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
           }`}>
             {impact}
