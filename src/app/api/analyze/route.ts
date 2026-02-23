@@ -320,14 +320,40 @@ export async function POST(request: NextRequest) {
       seenUrls.add(pageUrl);
 
       try {
-        // Use fetchWithRedirects to handle short URLs for each page
         const { content: html, finalUrl: resolvedUrl } = await fetchWithRedirects(pageUrl, { headers: fetchHeaders });
-        seenUrls.add(resolvedUrl); // Track resolved URL to avoid duplicates
+        seenUrls.add(resolvedUrl);
         const $ = cheerio.load(html);
         const analysis = analyzePage($, resolvedUrl, domain);
         pages.push(analysis);
       } catch (e) {
         console.error(`Failed to analyze ${pageUrl}:`, e);
+      }
+    }
+
+    // Check if we need to discover product pages for accurate Product Extractability scoring
+    const urlTypeAnalysis = detectUrlType(finalUrl);
+    const hasProductPages = pages.some(p => p.pageType === "product");
+    
+    if (urlTypeAnalysis.type === "domain" && !hasProductPages && pages.length > 0) {
+      console.log("No product pages found, discovering from homepage links...");
+      const productLinks = await discoverProductPageLinks(finalUrl, pages[0]?.links || []);
+      
+      for (const productUrl of productLinks.slice(0, 5)) {
+        if (seenUrls.has(productUrl)) continue;
+        seenUrls.add(productUrl);
+        
+        try {
+          const { content: html, finalUrl: resolvedUrl } = await fetchWithRedirects(productUrl, { headers: fetchHeaders });
+          seenUrls.add(resolvedUrl);
+          const $ = cheerio.load(html);
+          const analysis = analyzePage($, resolvedUrl, domain);
+          if (analysis.pageType === "product") {
+            pages.push(analysis);
+            console.log(`Found product page: ${resolvedUrl}`);
+          }
+        } catch (e) {
+          console.error(`Failed to analyze product page ${productUrl}:`, e);
+        }
       }
     }
 
@@ -392,6 +418,51 @@ async function discoverPages(baseUrl: string, sitemapContents: string[], robotsT
   }
 
   return [...new Set(urls)].slice(0, limit);
+}
+
+async function discoverProductPageLinks(baseUrl: string, knownLinks: string[]): Promise<string[]> {
+  const productUrls: string[] = [];
+  const productPatterns = [
+    /\/products?\//i,
+    /\/p\//i,
+    /\/dp\//i,
+    /\/item\//i,
+    /\/product-/i,
+    /\?product=/i,
+    /\/[a-z0-9-]+\/p-[a-z0-9]+/i,
+    /\/shop\//i,
+    /\/buy\//i,
+  ];
+
+  for (const link of knownLinks) {
+    try {
+      const linkUrl = new URL(link, baseUrl);
+      if (productPatterns.some(p => p.test(linkUrl.pathname))) {
+        productUrls.push(linkUrl.href);
+      }
+    } catch {}
+  }
+
+  if (productUrls.length === 0) {
+    try {
+      const html = await fetchWithTimeout(baseUrl, { headers: fetchHeaders });
+      const $ = cheerio.load(html);
+      const baseHostname = new URL(baseUrl).hostname;
+
+      $("a[href]").each((_, el) => {
+        const href = $(el).attr("href") || "";
+        try {
+          const linkUrl = new URL(href, baseUrl);
+          if (linkUrl.hostname === baseHostname && 
+              productPatterns.some(p => p.test(linkUrl.pathname))) {
+            productUrls.push(linkUrl.href);
+          }
+        } catch {}
+      });
+    } catch {}
+  }
+
+  return [...new Set(productUrls)];
 }
 
 async function parseSitemapRecursive(xml: string, baseOrigin: string): Promise<string[]> {

@@ -1908,24 +1908,24 @@ export function calculateProductExtractabilityScore(page: PageAnalysis): Product
   
   let totalScore = 0;
   
-  // 1. Product Schema (15 points)
+  // 1. Product Identity (15 points) - Schema OR Content
   breakdown.productSchema.present = page.schemas.hasProductSchema;
+  breakdown.productSchema.hasName = !!extraction.productName?.value;
+  breakdown.productSchema.hasDescription = (page.metaDescription?.length || 0) >= 50;
+  breakdown.productSchema.hasImage = (extraction.images?.count || page.images?.total || 0) > 0;
+  breakdown.productSchema.hasOffers = page.schemas.hasOfferSchema || !!extraction.price?.value;
+  
+  let identityScore = 0;
   if (page.schemas.hasProductSchema) {
-    breakdown.productSchema.hasName = extraction.productName?.source === "schema";
-    breakdown.productSchema.hasDescription = page.metaDescription?.length > 0;
-    breakdown.productSchema.hasImage = (extraction.images?.count || 0) > 0;
-    breakdown.productSchema.hasOffers = page.schemas.hasOfferSchema || extraction.price?.source === "schema";
-    
-    let schemaScore = 8;
-    if (breakdown.productSchema.hasName && breakdown.productSchema.hasOffers) {
-      schemaScore = 15;
-      breakdown.productSchema.complete = true;
-    } else if (breakdown.productSchema.hasName) {
-      schemaScore = 12;
-    }
-    breakdown.productSchema.points = schemaScore;
-    totalScore += schemaScore;
+    identityScore = 15;
+    breakdown.productSchema.complete = breakdown.productSchema.hasName && breakdown.productSchema.hasOffers;
+  } else if (extraction.productName?.value) {
+    identityScore = 10;
+    if (extraction.category?.value) identityScore += 3;
+    if ((page.images?.total || 0) >= 2) identityScore += 2;
   }
+  breakdown.productSchema.points = Math.min(15, identityScore);
+  totalScore += breakdown.productSchema.points;
   
   // 2. Identifiers (15 points)
   breakdown.identifiers.hasGTIN = !!identifiers.gtin;

@@ -109,42 +109,10 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
             </div>
           </div>
           <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
-            ✓ Short URLs are automatically resolved to their final destination for accurate analysis.
+            Short URLs are automatically resolved to their final destination for accurate analysis.
           </p>
         </div>
       )}
-
-      {/* Limitations Warning */}
-      <div className="card-modern p-6 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
-        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-amber-800 dark:text-amber-200">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          What This Score Means (And Doesn't Mean)
-        </h3>
-        <div className="grid md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <h4 className="font-medium text-amber-700 dark:text-amber-300 mb-2">What We Measure ✓</h4>
-            <ul className="text-amber-600 dark:text-amber-400 space-y-1 text-xs">
-              <li>• Can LLMs extract your product information?</li>
-              <li>• Is your content structured for AI comprehension?</li>
-              <li>• Are you following technical best practices?</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-medium text-amber-700 dark:text-amber-300 mb-2">What We CAN'T Measure ✗</h4>
-            <ul className="text-amber-600 dark:text-amber-400 space-y-1 text-xs">
-              <li>• Training data inclusion (is your site in ChatGPT's data?)</li>
-              <li>• Domain authority (how many sites link to you?)</li>
-              <li>• Brand recognition (do LLMs "know" your brand?)</li>
-              <li>• Citation density (how often cited across the web?)</li>
-            </ul>
-          </div>
-        </div>
-        <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 italic">
-          Sites like Amazon may score low on technical factors but rank high in LLM results due to factors we cannot measure.
-        </p>
-      </div>
 
       {/* Two-Layer Score Cards */}
       <div className="grid md:grid-cols-2 gap-4">
@@ -180,92 +148,131 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
         </div>
       )}
 
-      {/* Schema Coverage */}
-      <div className="card-modern p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-            </svg>
-          </span>
-          Schema Coverage
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard 
-            value={result.schemaCoverage.pagesWithSchema} 
-            label="With Schema" 
-            color="emerald"
-            total={result.pagesAnalyzed}
-          />
-          <StatCard 
-            value={result.schemaCoverage.productPages} 
-            label="Product" 
-            color="blue"
-          />
-          <StatCard 
-            value={result.schemaCoverage.reviewPages} 
-            label="Reviews" 
-            color="purple"
-          />
-          <StatCard 
-            value={result.schemaCoverage.aggregateRatingPages} 
-            label="Ratings" 
-            color="amber"
-          />
+      {/* Site Discoverability Breakdown */}
+      {result.siteDiscoverabilityBreakdown && (
+        <div className="card-modern p-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            Site Discoverability Breakdown
+          </h3>
+          <div className="grid md:grid-cols-2 gap-3">
+            <BreakdownItem
+              label="llms.txt"
+              status={result.siteDiscoverabilityBreakdown.llmsTxt.present ? "good" : "poor"}
+              detail={result.siteDiscoverabilityBreakdown.llmsTxt.present ? "Present" : "Missing"}
+              points={result.siteDiscoverabilityBreakdown.llmsTxt.points}
+              max={result.siteDiscoverabilityBreakdown.llmsTxt.max}
+            />
+            <BreakdownItem
+              label="AI Crawler Access"
+              status={result.siteDiscoverabilityBreakdown.aiCrawlerAccess.allowsOAI ? "good" : "warning"}
+              detail={result.siteDiscoverabilityBreakdown.aiCrawlerAccess.details}
+              points={result.siteDiscoverabilityBreakdown.aiCrawlerAccess.points}
+              max={result.siteDiscoverabilityBreakdown.aiCrawlerAccess.max}
+            />
+            <BreakdownItem
+              label="Sitemap"
+              status={result.siteDiscoverabilityBreakdown.sitemap.present ? "good" : "poor"}
+              detail={result.siteDiscoverabilityBreakdown.sitemap.present ? `${result.siteDiscoverabilityBreakdown.sitemap.urlCount} URLs` : "Missing"}
+              points={result.siteDiscoverabilityBreakdown.sitemap.points}
+              max={result.siteDiscoverabilityBreakdown.sitemap.max}
+            />
+            <BreakdownItem
+              label="Organization Schema"
+              status={result.siteDiscoverabilityBreakdown.organizationSchema.present ? "good" : "warning"}
+              detail={result.siteDiscoverabilityBreakdown.organizationSchema.present ? "Present" : "Missing"}
+              points={result.siteDiscoverabilityBreakdown.organizationSchema.points}
+              max={result.siteDiscoverabilityBreakdown.organizationSchema.max}
+            />
+          </div>
+          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              <strong>Can't Measure:</strong> External mentions, domain authority, and brand recognition significantly impact discoverability but require external data sources.
+            </p>
+          </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-          <StatCard value={result.schemaCoverage.organizationPages} label="Organization" small />
-          <StatCard value={result.schemaCoverage.faqPages} label="FAQ" small />
-          <StatCard value={result.schemaCoverage.breadcrumbPages} label="Breadcrumb" small />
-          <StatCard value={pagesWithAuthors} label="With Author" small />
-        </div>
-      </div>
+      )}
 
-      {/* LLM Readiness */}
-      <div className="card-modern p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </span>
-          LLM Readiness Metrics
-        </h3>
-        <div className="grid md:grid-cols-3 gap-4">
-          <MetricCard
-            title="Content Freshness"
-            score={avgFreshnessScore}
-            detail={`${pagesWithFreshContent} pages with fresh content`}
-          />
-          <MetricCard
-            title="Quote-Ready Snippets"
-            score={Math.min(100, totalSnippets * 10)}
-            detail={`${totalSnippets} citable sentences`}
-          />
-          <MetricCard
-            title="Author Attribution"
-            score={result.pages.length > 0 ? Math.round((pagesWithAuthors / result.pages.length) * 100) : 0}
-            detail={`${pagesWithAuthors} pages with author`}
-          />
+      {/* Product Extractability Breakdown */}
+      {result.productExtractabilityBreakdown && (
+        <div className="card-modern p-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </span>
+            Product Extractability Breakdown
+          </h3>
+          <div className="grid md:grid-cols-2 gap-3">
+            <BreakdownItem
+              label="Product Identity"
+              status={result.productExtractabilityBreakdown.productSchema.points >= 10 ? "good" : result.productExtractabilityBreakdown.productSchema.points >= 5 ? "warning" : "poor"}
+              detail={result.productExtractabilityBreakdown.productSchema.present ? "Schema found" : result.productExtractabilityBreakdown.productSchema.hasName ? "Content extraction" : "Missing"}
+              points={result.productExtractabilityBreakdown.productSchema.points}
+              max={result.productExtractabilityBreakdown.productSchema.max}
+            />
+            <BreakdownItem
+              label="Identifiers"
+              status={result.productExtractabilityBreakdown.identifiers.count > 0 ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.identifiers.count > 0 ? `${result.productExtractabilityBreakdown.identifiers.count} found` : "Missing GTIN/MPN/SKU"}
+              points={result.productExtractabilityBreakdown.identifiers.points}
+              max={result.productExtractabilityBreakdown.identifiers.max}
+            />
+            <BreakdownItem
+              label="Pricing"
+              status={result.productExtractabilityBreakdown.pricing.found ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.pricing.found ? `${result.productExtractabilityBreakdown.pricing.source}` : "Not detected"}
+              points={result.productExtractabilityBreakdown.pricing.points}
+              max={result.productExtractabilityBreakdown.pricing.max}
+            />
+            <BreakdownItem
+              label="Availability"
+              status={result.productExtractabilityBreakdown.availability.found ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.availability.found ? result.productExtractabilityBreakdown.availability.status : "Unknown"}
+              points={result.productExtractabilityBreakdown.availability.points}
+              max={result.productExtractabilityBreakdown.availability.max}
+            />
+            <BreakdownItem
+              label="Ratings"
+              status={result.productExtractabilityBreakdown.aggregateRating.found ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.aggregateRating.found ? `${result.productExtractabilityBreakdown.aggregateRating.rating}/5` : "Not found"}
+              points={result.productExtractabilityBreakdown.aggregateRating.points}
+              max={result.productExtractabilityBreakdown.aggregateRating.max}
+            />
+            <BreakdownItem
+              label="Reviews"
+              status={result.productExtractabilityBreakdown.reviewCount.found ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.reviewCount.found ? `${result.productExtractabilityBreakdown.reviewCount.count} reviews` : "None found"}
+              points={result.productExtractabilityBreakdown.reviewCount.points}
+              max={result.productExtractabilityBreakdown.reviewCount.max}
+            />
+            <BreakdownItem
+              label="Images"
+              status={result.productExtractabilityBreakdown.images.count >= 2 ? "good" : result.productExtractabilityBreakdown.images.count >= 1 ? "warning" : "poor"}
+              detail={`${result.productExtractabilityBreakdown.images.count} images, ${result.productExtractabilityBreakdown.images.withAlt} with alt`}
+              points={result.productExtractabilityBreakdown.images.points}
+              max={result.productExtractabilityBreakdown.images.max}
+            />
+            <BreakdownItem
+              label="Specifications"
+              status={result.productExtractabilityBreakdown.specifications.found ? "good" : "poor"}
+              detail={result.productExtractabilityBreakdown.specifications.found ? `${result.productExtractabilityBreakdown.specifications.count} specs` : "Not found"}
+              points={result.productExtractabilityBreakdown.specifications.points}
+              max={result.productExtractabilityBreakdown.specifications.max}
+            />
+          </div>
+          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              <strong>Can't Measure:</strong> Third-party reviews on Reddit, forums, and external sites significantly impact LLM recommendations but require external data sources.
+            </p>
+          </div>
         </div>
-      </div>
-
-      {/* Site-wide Factors */}
-      <div className="card-modern p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </span>
-          Site-wide Factors
-        </h3>
-        <div className="grid md:grid-cols-2 gap-3">
-          {result.aggregateFactors.map((factor, index) => (
-            <FactorCard key={index} factor={factor} />
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Recommendations */}
       <div className="card-modern p-6">
@@ -334,51 +341,19 @@ export function VisibilityScore({ result }: VisibilityScoreProps) {
   );
 }
 
-function StatCard({ value, label, color, total, small = false }: { value: number; label: string; color?: string; total?: number; small?: boolean }) {
-  const colorClasses: Record<string, string> = {
-    emerald: "text-emerald-600 dark:text-emerald-400",
-    blue: "text-blue-600 dark:text-blue-400",
-    purple: "text-purple-600 dark:text-purple-400",
-    amber: "text-amber-600 dark:text-amber-400",
-  };
-
-  return (
-    <div className="stat-card">
-      <div className={`${small ? "text-xl" : "text-2xl"} font-bold ${color ? colorClasses[color] : ""}`}>
-        {value}
-      </div>
-      <div className={`${small ? "text-xs" : "text-sm"} text-zinc-500 mt-1`}>{label}</div>
-      {total !== undefined && (
-        <div className="text-xs text-zinc-400">{Math.round((value / total) * 100)}%</div>
-      )}
-    </div>
-  );
-}
-
-function MetricCard({ title, score, detail }: { title: string; score: number; detail: string }) {
-  const getColor = (s: number) => {
-    if (s >= 70) return "from-emerald-500 to-teal-500";
-    if (s >= 50) return "from-amber-500 to-orange-500";
-    return "from-red-500 to-rose-500";
-  };
-
-  return (
-    <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
-      <div className="flex justify-between items-center mb-2">
-        <span className="font-medium text-sm">{title}</span>
-        <span className={`badge ${score >= 70 ? "badge-success" : score >= 50 ? "badge-warning" : "badge-error"}`}>
-          {score}%
-        </span>
-      </div>
-      <div className="progress-bar mb-2">
-        <div className={`progress-bar-fill bg-gradient-to-r ${getColor(score)}`} style={{ width: `${score}%` }} />
-      </div>
-      <p className="text-xs text-zinc-500">{detail}</p>
-    </div>
-  );
-}
-
-function FactorCard({ factor }: { factor: { name: string; score: number; status: string; details: string } }) {
+function BreakdownItem({ 
+  label, 
+  status, 
+  detail, 
+  points, 
+  max 
+}: { 
+  label: string; 
+  status: "good" | "warning" | "poor"; 
+  detail: string; 
+  points: number; 
+  max: number;
+}) {
   const statusColors: Record<string, string> = {
     good: "from-emerald-500 to-teal-500",
     warning: "from-amber-500 to-orange-500",
@@ -390,16 +365,21 @@ function FactorCard({ factor }: { factor: { name: string; score: number; status:
     poor: "badge-error",
   };
 
+  const percentage = max > 0 ? (points / max) * 100 : 0;
+
   return (
     <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
       <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium">{factor.name}</span>
-        <span className={`badge ${statusBadge[factor.status]}`}>{factor.status}</span>
+        <span className="text-sm font-medium">{label}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold">{points}/{max}</span>
+          <span className={`badge ${statusBadge[status]} text-xs`}>{status}</span>
+        </div>
       </div>
       <div className="progress-bar mb-2">
-        <div className={`progress-bar-fill bg-gradient-to-r ${statusColors[factor.status]}`} style={{ width: `${factor.score}%` }} />
+        <div className={`progress-bar-fill bg-gradient-to-r ${statusColors[status]}`} style={{ width: `${percentage}%` }} />
       </div>
-      <p className="text-xs text-zinc-500">{factor.details}</p>
+      <p className="text-xs text-zinc-500">{detail}</p>
     </div>
   );
 }
