@@ -126,31 +126,23 @@ export default function HowItWorks() {
 
             <h3 className="text-xl font-semibold mb-4">Layer 2: Product Extractability Breakdown</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-              Only product pages receive extractability scores. Homepages, blogs, and utility pages are marked N/A.
+              Only product pages receive extractability scores. Homepages, blogs, and utility pages are marked N/A. Total: 100 points.
             </p>
 
             <div className="space-y-6">
               <ScoreFactor 
-                title="Product Schema (25 points)" 
-                weight={25}
+                title="Identity (20 points)" 
+                weight={20}
                 impact="Critical"
-                calculation="Name: 5pts. Description: 5pts. Image: 5pts. Offers: 5pts. Complete schema: bonus 5pts."
-                why="Structured data is the fastest, most reliable way for LLMs to understand your product."
+                calculation="Product Name: 10pts (schema OR h1). Description: 5pts (≥50 chars). Category: 5pts (breadcrumb OR URL)."
+                why="Can LLMs identify WHAT this product is? This is the foundation of visibility."
               />
               
-              <ScoreFactor 
-                title="Identifiers (15 points)" 
-                weight={15}
-                impact="High"
-                calculation="GTIN: 5pts. MPN: 5pts. SKU: 5pts. At least one identifier strongly recommended."
-                why="GTIN/MPN/SKU help LLMs match your product across platforms and price comparison sites."
-              />
-
               <ScoreFactor 
                 title="Pricing (15 points)" 
                 weight={15}
                 impact="Critical"
-                calculation="Price: 12pts (schema OR $₹€£ pattern). Currency: 3pts (schema OR symbol detection)."
+                calculation="Price: 12pts (schema OR text pattern like $1,299). Currency: 3pts (schema OR symbol)."
                 why="Price is essential for shopping queries. LLMs need to know the cost to recommend."
               />
 
@@ -163,19 +155,43 @@ export default function HowItWorks() {
               />
 
               <ScoreFactor 
-                title="Ratings & Reviews (20 points)" 
+                title="Reviews (20 points)" 
                 weight={20}
                 impact="High"
-                calculation="Rating: 10pts (schema OR ★★★★☆ pattern). Review Count: 10pts."
+                calculation="Rating: 10pts (schema OR ★★★★☆ pattern). Review Count: 10pts (based on count)."
                 why="Social proof is critical. LLMs prefer products with ratings and reviews."
               />
 
               <ScoreFactor 
-                title="Images & Specifications (15 points)" 
-                weight={15}
+                title="Identifiers (10 points)" 
+                weight={10}
+                impact="High"
+                calculation="GTIN: 10pts. MPN: 7pts. SKU: 5pts. At least one recommended."
+                why="GTIN/MPN/SKU help LLMs match your product across platforms and price comparison sites."
+              />
+
+              <ScoreFactor 
+                title="Images (5 points)" 
+                weight={5}
                 impact="Medium"
-                calculation="Images: 8pts (count + alt text). Specs: 7pts (table/list detected)."
-                why="Visual and detailed specs help LLMs answer comparison questions."
+                calculation="3+ images with alt text: 5pts. 2+ images: 4pts. 1+ image: 3pts."
+                why="Visual content helps LLMs understand and describe your product."
+              />
+
+              <ScoreFactor 
+                title="Specifications (10 points)" 
+                weight={10}
+                impact="Medium"
+                calculation="Table/List detected: 10pts (5+ specs) or 7pts (3+ specs)."
+                why="Detailed specs help LLMs answer comparison questions like 'Which laptop has 16GB RAM?'"
+              />
+
+              <ScoreFactor 
+                title="Schema Bonus (10 points)" 
+                weight={10}
+                impact="Bonus"
+                calculation="Complete Product+Offer+Rating schema: 10pts. Partial: 5-8pts."
+                why="Schema is faster and more reliable for LLMs. You get bonus points for using structured data."
               />
 
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
@@ -200,74 +216,49 @@ export default function HowItWorks() {
           <div className="grid md:grid-cols-2 gap-6">
             <AnalysisCard
               icon="🔍"
-              title="Visibility Score"
-              description="Comprehensive page-by-page analysis with aggregate site scoring"
+              title="Two-Layer Scoring"
+              description="Measures both site discoverability and product extractability"
               items={[
-                "JSON-LD structured data detection",
-                "Schema type identification (Product, Organization, FAQ, Review)",
-                "Meta tag completeness",
-                "Semantic HTML structure",
-                "Image alt text coverage",
+                "Site Discoverability: llms.txt, AI crawler access, sitemap, organization schema",
+                "Product Extractability: identity, pricing, availability, ratings, identifiers, images, specs",
+                "100-point unified scoring system",
+                "Only product pages scored for extractability",
               ]}
             />
             
-            <AnalysisCard
-              icon="💬"
-              title="Quote-Ready Snippets"
-              description="Identifies sentences LLMs can cite directly"
-              items={[
-                "10-35 word self-contained sentences",
-                "Factual, declarative statements",
-                "Subject-predicate clarity check",
-                "Numbers and specifics detection",
-              ]}
-            />
-            
-            <AnalysisCard
-              icon="📅"
-              title="Content Freshness"
-              description="Timestamps and update frequency analysis"
-              items={[
-                "Published/modified date extraction",
-                "JSON-LD datePublished/dateModified",
-                "Open Graph article timestamps",
-                "Time element parsing",
-              ]}
-            />
-            
-            <AnalysisCard
-              icon="👤"
-              title="Author Attribution"
-              description="E-E-A-T signal detection"
-              items={[
-                "Author meta tags",
-                "Person schema markup",
-                "rel='author' links",
-                "Credential and bio extraction",
-              ]}
-            />
-
             <AnalysisCard
               icon="⭐"
               title="Reviews & Ratings"
               description="Social proof signal detection"
               items={[
-                "Review schema detection",
-                "AggregateRating extraction",
-                "Rating value and count",
-                "Review count analysis",
+                "AggregateRating schema detection",
+                "Rating value and count extraction",
+                "Text pattern detection (★★★★☆)",
+                "Note: JS-rendered reviews may not be detected",
+              ]}
+            />
+            
+            <AnalysisCard
+              icon="🤖"
+              title="Schema Detection"
+              description="JSON-LD structured data analysis"
+              items={[
+                "Product, Organization, FAQ, Breadcrumb schemas",
+                "Schema vs content extraction (OR logic)",
+                "Schema bonus points for structured data",
+                "Identifier extraction (GTIN, MPN, SKU)",
               ]}
             />
 
             <AnalysisCard
-              icon="🤖"
-              title="LLM Discovery Test"
-              description="Simulate how LLMs might find and describe your site"
+              icon="🔧"
+              title="Fix It Tools"
+              description="Generate schemas to fix issues"
               items={[
-                "Brand discovery prompts",
-                "Product recommendation simulation",
-                "Comparison shopping queries",
-                "Trust & credibility tests",
+                "Product Schema generator",
+                "Organization Schema generator",
+                "FAQ Schema generator",
+                "Breadcrumb Schema generator",
               ]}
             />
           </div>
@@ -332,11 +323,11 @@ export default function HowItWorks() {
                 </p>
               </div>
               <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
-                <h4 className="font-medium mb-2">2. Page-Level vs. Site-Level</h4>
+                <h4 className="font-medium mb-2">2. Static HTML Analysis Only</h4>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  <strong>Tradeoff:</strong> Separate scores for pages and overall site.<br/>
-                  <strong>Reason:</strong> Product pages need different scoring than homepage/collections.<br/>
-                  <strong>Impact:</strong> More complex but more accurate.
+                  <strong>Tradeoff:</strong> We analyze static HTML, not JavaScript-rendered content.<br/>
+                  <strong>Reason:</strong> LLMs also fetch static HTML. JS-rendered reviews/prices won't be seen by LLMs.<br/>
+                  <strong>Impact:</strong> Sites using client-side rendering may score lower than they should.
                 </p>
               </div>
               <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl">
@@ -376,31 +367,31 @@ export default function HowItWorks() {
               number={2}
               title="Add AggregateRating Schema"
               description="Include rating value and review count in your product schema. LLMs prioritize products with social proof."
-              impact="+10 score points"
+              impact="+20 score points"
             />
             <PracticeCard 
               number={3}
-              title="Create Quote-Ready Content"
-              description="Write short, factual sentences that can be quoted directly. Avoid vague statements. Use specific numbers and claims."
-              impact="Higher citation rate"
+              title="Create an llms.txt File"
+              description="Add a /llms.txt file at your site root with structured information specifically for LLM crawlers. This is becoming the standard for AI discoverability."
+              impact="+20 score points"
             />
             <PracticeCard 
               number={4}
-              title="Maintain Content Freshness"
-              description="Update product pages regularly. Add 'last updated' timestamps. LLMs favor current information."
-              impact="+15 score points"
+              title="Add Product Identifiers"
+              description="Include GTIN, MPN, or SKU in your product schema. This helps LLMs match your product across platforms."
+              impact="+10 score points"
             />
             <PracticeCard 
               number={5}
-              title="Add Author Attribution"
-              description="Include author names, credentials, and bios on content pages. This builds E-E-A-T signals that LLMs reference for credibility."
+              title="Add Detailed Specifications"
+              description="Include product specifications in tables or lists. LLMs use these for comparison queries."
               impact="+10 score points"
             />
             <PracticeCard 
               number={6}
-              title="Create an llms.txt File"
-              description="Add a /llms.txt file at your site root with structured information specifically for LLM crawlers. This is becoming the standard for AI discoverability."
-              impact="+15% traffic estimate"
+              title="Enable AI Crawler Access"
+              description="Ensure your robots.txt allows OAI-SearchBot, GPTBot, and ChatGPT-User. These bots power ChatGPT Shopping."
+              impact="+15 score points"
             />
           </div>
         </section>
