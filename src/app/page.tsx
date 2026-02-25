@@ -3,12 +3,9 @@
 import { useState } from "react";
 import { VisibilityScore } from "@/components/VisibilityScore";
 import { SchemaGenerator } from "@/components/SchemaGenerator";
-import { LLMPreview } from "@/components/LLMPreview";
-import { ContentAudit } from "@/components/ContentAudit";
-import { LLMDicoveryTest } from "@/components/LLMDiscoveryTest";
 import { AnalysisResult } from "@/lib/types";
 
-type Tab = "visibility" | "schema" | "preview" | "content" | "discovery";
+type Tab = "visibility" | "fixit";
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -65,10 +62,7 @@ export default function Home() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "visibility", label: "Visibility Score" },
-    { key: "discovery", label: "LLM Discovery" },
-    { key: "schema", label: "Schema Generator" },
-    { key: "preview", label: "LLM Preview" },
-    { key: "content", label: "Content Audit" },
+    { key: "fixit", label: "Fix It" },
   ];
 
   return (
@@ -214,10 +208,7 @@ export default function Home() {
             </div>
 
             {activeTab === "visibility" && <VisibilityScore result={results} />}
-            {activeTab === "discovery" && <LLMDicoveryTest result={results} />}
-            {activeTab === "schema" && <SchemaGenerator result={results} />}
-            {activeTab === "preview" && <LLMPreview result={results} />}
-            {activeTab === "content" && <ContentAudit result={results} />}
+            {activeTab === "fixit" && <SchemaGenerator result={results} />}
           </div>
         )}
       </div>
